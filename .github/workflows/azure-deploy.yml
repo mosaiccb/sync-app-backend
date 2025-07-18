@@ -5,7 +5,20 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
+     - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Deploy to Azure Functions (Production)'
+      uses: Azure/functions-action@v1
+      with:
+        app-name: 'ukg-sync-backend-5rrqlcuxyzlvy'
+        slot-name: 'production'
+        package: .
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}ch:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
@@ -67,19 +80,17 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
 
-    - name: 'Install Azure Developer CLI'
-      uses: azure/setup-azd@v1.0.0
-
     - name: 'Login to Azure'
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: 'Deploy to Azure Functions (Development)'
-      run: |
-        azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID }} --client-secret ${{ secrets.AZURE_CLIENT_SECRET }} --tenant-id ${{ secrets.AZURE_TENANT_ID }}
-        azd env select dev
-        azd deploy --no-prompt
+      uses: Azure/functions-action@v1
+      with:
+        app-name: 'ukg-sync-backend-5rrqlcuxyzlvy'
+        slot-name: 'production'
+        package: .
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
