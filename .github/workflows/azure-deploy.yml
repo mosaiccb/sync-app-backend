@@ -73,12 +73,10 @@ jobs:
         ls -la ../deploy.zip
 
     - name: 'Deploy to Azure Functions (Development)'
-      uses: azure/webapps-deploy@v2
+      uses: Azure/functions-action@v1
       with:
         app-name: 'ukg-sync-backend-5rrqlcuxyzlvy'
-        slot-name: 'production'
         package: './deploy.zip'
-        type: 'zip'
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -111,11 +109,9 @@ jobs:
         ls -la ../deploy.zip
 
     - name: 'Deploy to Azure Functions (Production)'
-      uses: azure/webapps-deploy@v2
+      uses: Azure/functions-action@v1
       with:
         app-name: 'ukg-sync-backend-63mxjgaoxm2c4'
-        slot-name: 'production'
         package: './deploy.zip'
-        type: 'zip'
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
