@@ -35,6 +35,12 @@ export declare class TenantDatabaseService {
     private credential;
     constructor();
     /**
+     * Parse SQL connection string
+     * @param connectionString Connection string to parse
+     * @returns Parsed connection configuration
+     */
+    private parseConnectionString;
+    /**
      * Create a new database connection
      * @returns Promise<Connection>
      */

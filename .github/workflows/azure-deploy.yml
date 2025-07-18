@@ -82,40 +82,4 @@ jobs:
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-  deploy-prod:
-    needs: deploy-dev
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
-    steps:
-    - name: 'Download build artifacts'
-      uses: actions/download-artifact@v4
-      with:
-        name: build-artifacts
-        path: ./deploy
 
-    - name: 'Setup Node ${{ env.NODE_VERSION }} Environment'
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-
-    - name: 'Login to Azure'
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: 'Create deployment package'
-      run: |
-        cd ./deploy
-        zip -r ../deploy.zip . -x "*.git*" "*.vscode*" "*.md" "*.log" "tests/*" "scripts/*" ".env*" "*.map" "src/*" "infra/*" "coverage/*"
-        ls -la ../deploy.zip
-
-    - name: 'Deploy to Azure Functions (Production)'
-      run: |
-        az functionapp deployment source config-zip \
-          --resource-group mosaicRG01 \
-          --name ukg-sync-backend-63mxjgaoxm2c4 \
-          --src ./deploy.zip \
-          --build-remote
-      env:
-        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
