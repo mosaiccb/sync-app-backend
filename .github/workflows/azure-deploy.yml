@@ -37,13 +37,12 @@ jobs:
         name: build-artifacts
         path: |
           dist/
+          lib/
           node_modules/
           host.json
           package.json
           package-lock.json
-          azure.yaml
-          infra/
-          local.settings.json.example
+          .funcignore
 
   deploy-dev:
     needs: build-and-test
@@ -51,14 +50,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: development
     steps:
-    - name: 'Checkout GitHub Action'
-      uses: actions/checkout@v4
-
     - name: 'Download build artifacts'
       uses: actions/download-artifact@v4
       with:
         name: build-artifacts
-        path: .
+        path: ./deploy
 
     - name: 'Setup Node ${{ env.NODE_VERSION }} Environment'
       uses: actions/setup-node@v4
@@ -72,10 +68,12 @@ jobs:
 
     - name: 'Deploy to Azure Functions (Development)'
       uses: Azure/functions-action@v1
+      timeout-minutes: 10
       with:
         app-name: 'ukg-sync-backend-5rrqlcuxyzlvy'
         slot-name: 'production'
-        package: .
+        package: ./deploy
+        respect-funcignore: true
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
@@ -86,14 +84,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: production
     steps:
-    - name: 'Checkout GitHub Action'
-      uses: actions/checkout@v4
-
     - name: 'Download build artifacts'
       uses: actions/download-artifact@v4
       with:
         name: build-artifacts
-        path: .
+        path: ./deploy
 
     - name: 'Setup Node ${{ env.NODE_VERSION }} Environment'
       uses: actions/setup-node@v4
@@ -107,10 +102,12 @@ jobs:
 
     - name: 'Deploy to Azure Functions (Production)'
       uses: Azure/functions-action@v1
+      timeout-minutes: 10
       with:
         app-name: 'ukg-sync-backend-63mxjgaoxm2c4'
         slot-name: 'production'
-        package: .
+        package: ./deploy
+        respect-funcignore: true
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
