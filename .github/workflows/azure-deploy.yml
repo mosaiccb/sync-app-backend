@@ -81,7 +81,7 @@ jobs:
         AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
 
   deploy-prod:
-    needs: build-and-test
+    needs: deploy-dev
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
@@ -108,7 +108,7 @@ jobs:
     - name: 'Deploy to Azure Functions (Production)'
       uses: Azure/functions-action@v1
       with:
-        app-name: 'ukg-sync-backend-5rrqlcuxyzlvy'
+        app-name: 'ukg-sync-backend-63mxjgaoxm2c4'
         slot-name: 'production'
         package: .
       env:
