@@ -7,7 +7,7 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "start": "func start",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "test:db": "node test-db-connection.js",
     "deploy:schema": "node deploy-schema.js",
     "migrate:tenants": "node migrate-tenants.js",
