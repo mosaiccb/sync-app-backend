@@ -1,0 +1,65 @@
+name: Manual Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - ukg-sync-prod
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: Setup Node ${{ env.NODE_VERSION }} Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: 'Install Dependencies and Build'
+      run: |
+        npm ci
+        npm run build
+
+    - name: 'Run Tests'
+      if: ${{ !inputs.skip_tests }}
+      run: npm run test
+
+    - name: 'Install Azure Developer CLI'
+      uses: azure/setup-azd@v1.0.0
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Deploy to Azure Functions'
+      run: |
+        azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID }} --client-secret ${{ secrets.AZURE_CLIENT_SECRET }} --tenant-id ${{ secrets.AZURE_TENANT_ID }}
+        azd env select ${{ inputs.environment }}
+        azd deploy --no-prompt
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
+
+    - name: 'Post-deployment validation'
+      run: |
+        echo "Deployment completed for environment: ${{ inputs.environment }}"
+        echo "You can now test your Azure Function endpoints"
