@@ -145,8 +145,30 @@ export class TenantDatabaseService {
    */
   private async createConnectionWithFallback(): Promise<sql.ConnectionPool> {
     const isAzureEnvironment = process.env.FUNCTIONS_WORKER_RUNTIME || process.env.WEBSITE_SITE_NAME;
+    const authType = process.env.SQL_AUTH_TYPE || 'azure-active-directory-msi-app-service';
     
-    if (isAzureEnvironment) {
+    // Check if SQL_AUTH_TYPE is explicitly set to use SQL authentication
+    if (authType === 'default') {
+      console.log('SQL_AUTH_TYPE is set to default, using SQL authentication');
+      const connectionString = process.env.AZURE_SQL_CONNECTION_STRING;
+      if (connectionString) {
+        try {
+          console.log('Attempting SQL authentication...');
+          const sqlConfig = this.parseConnectionStringToConfig(connectionString);
+          const sqlPool = new sql.ConnectionPool(sqlConfig);
+          await sqlPool.connect();
+          console.log('✅ Connected using SQL authentication');
+          return sqlPool;
+        } catch (sqlError: any) {
+          console.error('❌ SQL authentication failed:', sqlError?.message || sqlError);
+          throw new Error(`SQL authentication failed: ${sqlError?.message || sqlError}`);
+        }
+      } else {
+        throw new Error('SQL_AUTH_TYPE is default but AZURE_SQL_CONNECTION_STRING is not provided');
+      }
+    }
+    
+    if (isAzureEnvironment && authType === 'azure-active-directory-msi-app-service') {
       // Try managed identity first
       try {
         console.log('Attempting managed identity connection...');
