@@ -14,8 +14,8 @@ export declare const TenantConfigSchema: z.ZodObject<{
     lastSyncAt: z.ZodOptional<z.ZodDate>;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, "strip", z.ZodTypeAny, {
-    isActive: boolean;
     name: string;
+    isActive: boolean;
     ukgClientId: string;
     ukgClientSecret: string;
     ukgRedirectUri: string;
@@ -34,8 +34,8 @@ export declare const TenantConfigSchema: z.ZodObject<{
     ukgRedirectUri: string;
     ukgBaseUrl: string;
     id?: string | undefined;
-    description?: string | undefined;
     isActive?: boolean | undefined;
+    description?: string | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
     ukgScopes?: string[] | undefined;
@@ -57,8 +57,8 @@ export declare const TenantCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     lastSyncAt: z.ZodOptional<z.ZodDate>;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, "id" | "createdAt" | "updatedAt" | "lastSyncAt">, "strip", z.ZodTypeAny, {
-    isActive: boolean;
     name: string;
+    isActive: boolean;
     ukgClientId: string;
     ukgClientSecret: string;
     ukgRedirectUri: string;
@@ -72,14 +72,14 @@ export declare const TenantCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     ukgClientSecret: string;
     ukgRedirectUri: string;
     ukgBaseUrl: string;
-    description?: string | undefined;
     isActive?: boolean | undefined;
+    description?: string | undefined;
     ukgScopes?: string[] | undefined;
     metadata?: Record<string, any> | undefined;
 }>, {
     description: string | undefined;
-    isActive: boolean;
     name: string;
+    isActive: boolean;
     ukgClientId: string;
     ukgClientSecret: string;
     ukgRedirectUri: string;
@@ -92,8 +92,8 @@ export declare const TenantCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     ukgClientSecret: string;
     ukgRedirectUri: string;
     ukgBaseUrl: string;
-    description?: string | undefined;
     isActive?: boolean | undefined;
+    description?: string | undefined;
     ukgScopes?: string[] | undefined;
     metadata?: Record<string, any> | undefined;
 }>;
@@ -112,9 +112,9 @@ export declare const TenantUpdateSchema: z.ZodEffects<z.ZodObject<Omit<{
     lastSyncAt: z.ZodOptional<z.ZodOptional<z.ZodDate>>;
     metadata: z.ZodOptional<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>>;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
-    description?: string | undefined;
-    isActive?: boolean | undefined;
     name?: string | undefined;
+    isActive?: boolean | undefined;
+    description?: string | undefined;
     updatedAt?: Date | undefined;
     ukgClientId?: string | undefined;
     ukgClientSecret?: string | undefined;
@@ -124,9 +124,9 @@ export declare const TenantUpdateSchema: z.ZodEffects<z.ZodObject<Omit<{
     lastSyncAt?: Date | undefined;
     metadata?: Record<string, any> | undefined;
 }, {
-    description?: string | undefined;
-    isActive?: boolean | undefined;
     name?: string | undefined;
+    isActive?: boolean | undefined;
+    description?: string | undefined;
     updatedAt?: Date | undefined;
     ukgClientId?: string | undefined;
     ukgClientSecret?: string | undefined;
@@ -148,9 +148,9 @@ export declare const TenantUpdateSchema: z.ZodEffects<z.ZodObject<Omit<{
     lastSyncAt?: Date | undefined;
     metadata?: Record<string, any> | undefined;
 }, {
-    description?: string | undefined;
-    isActive?: boolean | undefined;
     name?: string | undefined;
+    isActive?: boolean | undefined;
+    description?: string | undefined;
     updatedAt?: Date | undefined;
     ukgClientId?: string | undefined;
     ukgClientSecret?: string | undefined;
