@@ -68,7 +68,7 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 };
             }
             
-            const apiId = await db.createThirdPartyAPI({
+            const apiId = await db.createOrUpdateThirdPartyAPI({
                 Name: body.Name,
                 Description: body.Description,
                 Category: body.Category || 'API',

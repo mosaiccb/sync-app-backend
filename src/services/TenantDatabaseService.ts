@@ -624,6 +624,60 @@ export class TenantDatabaseService {
   }
 
   /**
+   * Create or update ThirdPartyAPI (upsert operation)
+   */
+  async createOrUpdateThirdPartyAPI(apiData: {
+    Name: string;
+    Description?: string;
+    Category?: string;
+    Provider: string;
+    BaseUrl: string;
+    Version?: string;
+    AuthType: string;
+    KeyVaultSecretName: string;
+    ConfigurationJson?: string;
+    CreatedBy?: string;
+    UpdatedBy?: string;
+  }): Promise<string> {
+    // First check if an API with this provider and name already exists
+    const existingQuery = `
+      SELECT [Id] FROM [dbo].[ThirdPartyAPIs]
+      WHERE [Provider] = @provider AND [Name] = @name AND [IsActive] = 1
+    `;
+    
+    const existingParams = {
+      provider: apiData.Provider,
+      name: apiData.Name
+    };
+    
+    const existing = await this.executeQuery(existingQuery, existingParams);
+    
+    if (existing.length > 0) {
+      // Update existing record
+      const existingId = existing[0].Id;
+      const updateSuccess = await this.updateThirdPartyAPI(existingId, {
+        Description: apiData.Description,
+        Category: apiData.Category,
+        BaseUrl: apiData.BaseUrl,
+        Version: apiData.Version,
+        AuthType: apiData.AuthType,
+        KeyVaultSecretName: apiData.KeyVaultSecretName,
+        ConfigurationJson: apiData.ConfigurationJson,
+        UpdatedBy: apiData.UpdatedBy || apiData.CreatedBy || 'system'
+      });
+      
+      if (updateSuccess) {
+        return existingId;
+      } else {
+        throw new Error('Failed to update existing ThirdPartyAPI');
+      }
+    } else {
+      // Create new record
+      return await this.createThirdPartyAPI(apiData);
+    }
+  }
+
+  /**
    * Create a new ThirdPartyAPI
    */
   async createThirdPartyAPI(apiData: {

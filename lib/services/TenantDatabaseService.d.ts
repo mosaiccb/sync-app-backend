@@ -141,6 +141,22 @@ export declare class TenantDatabaseService {
         details?: any;
     }>;
     /**
+     * Create or update ThirdPartyAPI (upsert operation)
+     */
+    createOrUpdateThirdPartyAPI(apiData: {
+        Name: string;
+        Description?: string;
+        Category?: string;
+        Provider: string;
+        BaseUrl: string;
+        Version?: string;
+        AuthType: string;
+        KeyVaultSecretName: string;
+        ConfigurationJson?: string;
+        CreatedBy?: string;
+        UpdatedBy?: string;
+    }): Promise<string>;
+    /**
      * Create a new ThirdPartyAPI
      */
     createThirdPartyAPI(apiData: {
