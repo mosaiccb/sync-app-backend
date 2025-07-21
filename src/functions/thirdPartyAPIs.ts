@@ -20,6 +20,25 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 apis = await db.getAllThirdPartyAPIs();
             }
             
+            // Transform the data to match frontend interface (lowercase field names)
+            const transformedApis = apis.map(api => ({
+                id: api.Id,
+                name: api.Name,
+                description: api.Description,
+                category: api.Category,
+                provider: api.Provider,
+                baseUrl: api.BaseUrl,
+                version: api.Version,
+                authType: api.AuthType,
+                keyVaultSecretName: api.KeyVaultSecretName,
+                configurationJson: api.ConfigurationJson,
+                isActive: api.IsActive,
+                createdAt: api.CreatedAt,
+                updatedAt: api.UpdatedAt,
+                createdBy: api.CreatedBy,
+                updatedBy: api.UpdatedBy
+            }));
+            
             return {
                 status: 200,
                 headers: {
@@ -28,8 +47,8 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 },
                 body: JSON.stringify({
                     success: true,
-                    data: apis,
-                    count: apis.length
+                    data: transformedApis,
+                    count: transformedApis.length
                 })
             };
         }
@@ -65,6 +84,25 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
             
             const createdAPI = await db.getThirdPartyAPIById(apiId);
             
+            // Transform the created API to match frontend interface
+            const transformedAPI = createdAPI ? {
+                id: createdAPI.Id,
+                name: createdAPI.Name,
+                description: createdAPI.Description,
+                category: createdAPI.Category,
+                provider: createdAPI.Provider,
+                baseUrl: createdAPI.BaseUrl,
+                version: createdAPI.Version,
+                authType: createdAPI.AuthType,
+                keyVaultSecretName: createdAPI.KeyVaultSecretName,
+                configurationJson: createdAPI.ConfigurationJson,
+                isActive: createdAPI.IsActive,
+                createdAt: createdAPI.CreatedAt,
+                updatedAt: createdAPI.UpdatedAt,
+                createdBy: createdAPI.CreatedBy,
+                updatedBy: createdAPI.UpdatedBy
+            } : null;
+            
             return {
                 status: 201,
                 headers: {
@@ -74,7 +112,7 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 body: JSON.stringify({
                     success: true,
                     message: 'API configuration created successfully',
-                    data: createdAPI
+                    data: transformedAPI
                 })
             };
         }
