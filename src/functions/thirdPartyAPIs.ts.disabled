@@ -1,0 +1,296 @@
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { KeyVaultService } from '../services/keyVaultService';
+import { TenantDatabaseService } from '../services/TenantDatabaseService';
+
+// Initialize services following the existing pattern
+const keyVaultService = new KeyVaultService();
+const dbService = new TenantDatabaseService();
+
+// Validation schemas
+const CreateThirdPartyAPISchema = z.object({
+  name: z.string().min(1).max(255),
+  category: z.string().min(1).max(100),
+  provider: z.string().min(1).max(100),
+  baseUrl: z.string().url(),
+  version: z.string().optional(),
+  authType: z.enum(['oauth2', 'apikey', 'basic', 'custom']),
+  authConfig: z.object({
+    accessToken: z.string().min(1),
+    locations: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      locationId: z.string(),
+      token: z.string(),
+      isActive: z.boolean()
+    })).optional(),
+    customHeaders: z.record(z.string()).optional()
+  }),
+  endpoints: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    path: z.string(),
+    method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+    description: z.string().optional(),
+    requestBody: z.object({
+      contentType: z.string(),
+      schema: z.object({
+        type: z.string(),
+        format: z.string().optional(),
+        template: z.string().optional()
+      })
+    }).optional(),
+    headers: z.record(z.string()).optional()
+  })),
+  rateLimits: z.object({
+    requestsPerSecond: z.number().optional(),
+    requestsPerMinute: z.number().optional(),
+    requestsPerHour: z.number().optional()
+  }).optional(),
+  healthCheckEndpoint: z.string().optional(),
+  isActive: z.boolean().default(true)
+});
+
+const UpdateThirdPartyAPISchema = CreateThirdPartyAPISchema.partial().extend({
+  id: z.string().uuid()
+});
+
+export async function thirdPartyAPIsFunction(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const method = request.method.toUpperCase();
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/').filter(Boolean);
+    
+    // Extract tenant ID from path or headers
+    const tenantId = request.headers.get('x-tenant-id') || pathSegments[2];
+    if (!tenantId) {
+      return { status: 400, jsonBody: { error: 'Tenant ID is required' } };
+    }
+
+    const keyVaultService = new KeyVaultService();
+    const thirdPartyAPIService = new ThirdPartyAPIService(keyVaultService);
+
+    switch (method) {
+      case 'GET':
+        return await handleGetThirdPartyAPIs(request, tenantId, thirdPartyAPIService, context);
+        
+      case 'POST':
+        return await handleCreateThirdPartyAPI(request, tenantId, thirdPartyAPIService, context);
+        
+      case 'PUT':
+        return await handleUpdateThirdPartyAPI(request, tenantId, thirdPartyAPIService, context);
+        
+      case 'DELETE':
+        return await handleDeleteThirdPartyAPI(request, tenantId, thirdPartyAPIService, context);
+        
+      default:
+        return { status: 405, jsonBody: { error: 'Method not allowed' } };
+    }
+
+  } catch (error) {
+    context.error('Third-party APIs function error:', error);
+    return handleError(error, context);
+  }
+}
+
+async function handleGetThirdPartyAPIs(
+  request: HttpRequest,
+  tenantId: string,
+  service: ThirdPartyAPIService,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const url = new URL(request.url);
+    const apiId = url.searchParams.get('id');
+    const provider = url.searchParams.get('provider');
+
+    if (apiId) {
+      const api = await service.getThirdPartyAPI(tenantId, apiId);
+      if (!api) {
+        return { status: 404, jsonBody: { error: 'Third-party API not found' } };
+      }
+      return { status: 200, jsonBody: api };
+    }
+
+    const apis = await service.getThirdPartyAPIs(tenantId, provider);
+    return { status: 200, jsonBody: apis };
+
+  } catch (error) {
+    context.error('Error getting third-party APIs:', error);
+    return handleError(error, context);
+  }
+}
+
+async function handleCreateThirdPartyAPI(
+  request: HttpRequest,
+  tenantId: string,
+  service: ThirdPartyAPIService,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const body = await request.json();
+    const validatedData = validateRequest(CreateThirdPartyAPISchema, body);
+
+    // Store sensitive credentials in Key Vault
+    const keyVaultSecretName = `third-party-api-${tenantId}-${validatedData.provider.toLowerCase()}-${Date.now()}`;
+    
+    // Create the API configuration
+    const apiConfig = {
+      tenantId,
+      name: validatedData.name,
+      category: validatedData.category,
+      provider: validatedData.provider,
+      baseUrl: validatedData.baseUrl,
+      version: validatedData.version,
+      authType: validatedData.authType,
+      keyVaultSecretName,
+      authConfig: validatedData.authConfig,
+      endpoints: validatedData.endpoints,
+      rateLimits: validatedData.rateLimits,
+      healthCheckEndpoint: validatedData.healthCheckEndpoint,
+      isActive: validatedData.isActive,
+      createdBy: request.headers.get('x-user-id') || 'system',
+      updatedBy: request.headers.get('x-user-id') || 'system'
+    };
+
+    const createdAPI = await service.createThirdPartyAPI(apiConfig);
+
+    // Audit log
+    await auditLogger.log({
+      operation: 'CREATE_THIRD_PARTY_API',
+      entityId: createdAPI.id,
+      tenantId,
+      userId: request.headers.get('x-user-id') || 'system',
+      details: { provider: validatedData.provider, name: validatedData.name },
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent')
+    });
+
+    return { 
+      status: 201, 
+      jsonBody: {
+        id: createdAPI.id,
+        message: 'Third-party API configuration created successfully'
+      }
+    };
+
+  } catch (error) {
+    context.error('Error creating third-party API:', error);
+    return handleError(error, context);
+  }
+}
+
+async function handleUpdateThirdPartyAPI(
+  request: HttpRequest,
+  tenantId: string,
+  service: ThirdPartyAPIService,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const body = await request.json();
+    const validatedData = validateRequest(UpdateThirdPartyAPISchema, body);
+
+    const updatedAPI = await service.updateThirdPartyAPI(tenantId, validatedData);
+    if (!updatedAPI) {
+      return { status: 404, jsonBody: { error: 'Third-party API not found' } };
+    }
+
+    // Audit log
+    await auditLogger.log({
+      operation: 'UPDATE_THIRD_PARTY_API',
+      entityId: validatedData.id,
+      tenantId,
+      userId: request.headers.get('x-user-id') || 'system',
+      details: { changes: Object.keys(validatedData) },
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent')
+    });
+
+    return { 
+      status: 200, 
+      jsonBody: {
+        message: 'Third-party API configuration updated successfully'
+      }
+    };
+
+  } catch (error) {
+    context.error('Error updating third-party API:', error);
+    return handleError(error, context);
+  }
+}
+
+async function handleDeleteThirdPartyAPI(
+  request: HttpRequest,
+  tenantId: string,
+  service: ThirdPartyAPIService,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const url = new URL(request.url);
+    const apiId = url.searchParams.get('id');
+
+    if (!apiId) {
+      return { status: 400, jsonBody: { error: 'API ID is required' } };
+    }
+
+    const deleted = await service.deleteThirdPartyAPI(tenantId, apiId);
+    if (!deleted) {
+      return { status: 404, jsonBody: { error: 'Third-party API not found' } };
+    }
+
+    // Audit log
+    await auditLogger.log({
+      operation: 'DELETE_THIRD_PARTY_API',
+      entityId: apiId,
+      tenantId,
+      userId: request.headers.get('x-user-id') || 'system',
+      details: { deleted: true },
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent')
+    });
+
+    return { 
+      status: 200, 
+      jsonBody: {
+        message: 'Third-party API configuration deleted successfully'
+      }
+    };
+
+  } catch (error) {
+    context.error('Error deleting third-party API:', error);
+    return handleError(error, context);
+  }
+}
+
+// Register the function
+app.http('thirdPartyAPIs', {
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  route: 'third-party-apis/{tenantId?}/{id?}',
+  authLevel: 'function',
+  handler: thirdPartyAPIsFunction
+});
+
+// Test connection endpoint
+app.http('testThirdPartyAPIConnection', {
+  methods: ['POST'],
+  route: 'third-party-apis/test/{provider}',
+  authLevel: 'function',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      const provider = request.params.provider;
+      const body = await request.json();
+      
+      const keyVaultService = new KeyVaultService();
+      const thirdPartyAPIService = new ThirdPartyAPIService(keyVaultService);
+      
+      const result = await thirdPartyAPIService.testConnection(provider, body);
+      
+      return { status: 200, jsonBody: result };
+    } catch (error) {
+      context.error('Error testing third-party API connection:', error);
+      return handleError(error, context);
+    }
+  }
+});

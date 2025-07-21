@@ -1,0 +1,277 @@
+// Third-Party API service that extends existing database and Key Vault infrastructure
+// Reuses KeyVaultService for secure credential storage
+
+import { TenantDatabaseService } from './TenantDatabaseService';
+import { KeyVaultService } from './keyVaultService';
+
+export interface ThirdPartyAPIConfig {
+  id?: string;
+  tenantId?: string;
+  name: string;
+  description?: string;
+  category: string;
+  provider: string;
+  baseUrl: string;
+  version?: string;
+  authType: 'oauth2' | 'apikey' | 'bearer' | 'custom' | 'basic';
+  authConfig: any; // Will be stored in Key Vault
+  endpoints: APIEndpoint[];
+  rateLimits?: {
+    requestsPerSecond?: number;
+    requestsPerMinute?: number;
+    requestsPerHour?: number;
+    requestsPerDay?: number;
+  };
+  healthCheckEndpoint?: string;
+  isActive: boolean;
+  createdDate?: Date;
+  modifiedDate?: Date;
+}
+
+export interface APIEndpoint {
+  id: string;
+  name: string;
+  description?: string;
+  path: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  requestBodySchema?: any;
+  headers?: Record<string, string>;
+  isActive?: boolean;
+}
+
+export interface ParBrinkCredentials {
+  accessToken: string;
+  locations: Array<{
+    id: string;
+    name: string;
+    locationId: string;
+    token: string;
+    isActive: boolean;
+  }>;
+}
+
+export class ThirdPartyAPIService extends TenantDatabaseService {
+  private keyVaultService: KeyVaultService;
+
+  constructor() {
+    super();
+    this.keyVaultService = new KeyVaultService();
+  }
+
+  /**
+   * Create a new third-party API configuration
+   */
+  async createThirdPartyAPI(config: Omit<ThirdPartyAPIConfig, 'id' | 'createdDate' | 'modifiedDate'>): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const connection = this.getConnection();
+      
+      connection.on('connect', async (err: any) => {
+        if (err) {
+          reject(new Error(`Database connection failed: ${err.message}`));
+          return;
+        }
+
+        try {
+          const apiId = this.generateUUID();
+          
+          // Store sensitive credentials in Key Vault
+          const credentialKeyName = KeyVaultService.generateSecretName(
+            config.tenantId || 'global',
+            config.provider,
+            Date.now()
+          );
+          
+          await this.keyVaultService.storeThirdPartyAPICredentials(credentialKeyName, config.authConfig);
+
+          // Store non-sensitive configuration in database
+          const request = new Request(
+            `INSERT INTO ThirdPartyAPIs 
+             (Id, TenantId, Name, Description, Category, Provider, BaseUrl, Version, AuthType, CredentialKeyVaultName, HealthCheckEndpoint, IsActive)
+             VALUES (@Id, @TenantId, @Name, @Description, @Category, @Provider, @BaseUrl, @Version, @AuthType, @CredentialKeyVaultName, @HealthCheckEndpoint, @IsActive)`,
+            (err: any) => {
+              connection.close();
+              if (err) {
+                reject(new Error(`Failed to create third-party API: ${err.message}`));
+              } else {
+                resolve(apiId);
+              }
+            }
+          );
+
+          request.addParameter('Id', TYPES.UniqueIdentifier, apiId);
+          request.addParameter('TenantId', TYPES.UniqueIdentifier, config.tenantId || null);
+          request.addParameter('Name', TYPES.NVarChar, config.name);
+          request.addParameter('Description', TYPES.NVarChar, config.description || null);
+          request.addParameter('Category', TYPES.NVarChar, config.category);
+          request.addParameter('Provider', TYPES.NVarChar, config.provider);
+          request.addParameter('BaseUrl', TYPES.NVarChar, config.baseUrl);
+          request.addParameter('Version', TYPES.NVarChar, config.version || '1.0');
+          request.addParameter('AuthType', TYPES.NVarChar, config.authType);
+          request.addParameter('CredentialKeyVaultName', TYPES.NVarChar, credentialKeyName);
+          request.addParameter('HealthCheckEndpoint', TYPES.NVarChar, config.healthCheckEndpoint || null);
+          request.addParameter('IsActive', TYPES.Bit, config.isActive);
+
+          connection.execSql(request);
+
+          // Also store endpoints
+          if (config.endpoints && config.endpoints.length > 0) {
+            await this.createAPIEndpoints(apiId, config.endpoints);
+          }
+
+          // Store rate limits if provided
+          if (config.rateLimits) {
+            await this.createAPIRateLimits(apiId, config.rateLimits);
+          }
+
+        } catch (error) {
+          connection.close();
+          reject(error);
+        }
+      });
+
+      connection.connect();
+    });
+  }
+
+  /**
+   * Get all third-party APIs for a tenant
+   */
+  async getThirdPartyAPIs(tenantId?: string): Promise<ThirdPartyAPIConfig[]> {
+    return new Promise((resolve, reject) => {
+      const connection = this.getConnection();
+      const apis: ThirdPartyAPIConfig[] = [];
+      
+      connection.on('connect', (err: any) => {
+        if (err) {
+          reject(new Error(`Database connection failed: ${err.message}`));
+          return;
+        }
+
+        const query = tenantId 
+          ? `SELECT * FROM ThirdPartyAPIs WHERE TenantId = @TenantId OR TenantId IS NULL ORDER BY CreatedDate DESC`
+          : `SELECT * FROM ThirdPartyAPIs ORDER BY CreatedDate DESC`;
+
+        const request = new Request(query, (err: any) => {
+          connection.close();
+          if (err) {
+            reject(new Error(`Failed to fetch third-party APIs: ${err.message}`));
+          } else {
+            resolve(apis);
+          }
+        });
+
+        if (tenantId) {
+          request.addParameter('TenantId', TYPES.UniqueIdentifier, tenantId);
+        }
+
+        request.on('row', (columns: any) => {
+          const api: ThirdPartyAPIConfig = {
+            id: columns[0].value,
+            tenantId: columns[1].value,
+            name: columns[2].value,
+            description: columns[3].value,
+            category: columns[4].value,
+            provider: columns[5].value,
+            baseUrl: columns[6].value,
+            version: columns[7].value,
+            authType: columns[8].value,
+            authConfig: {}, // Will be loaded separately from Key Vault
+            endpoints: [], // Will be loaded separately
+            healthCheckEndpoint: columns[10].value,
+            isActive: columns[11].value,
+            createdDate: columns[12].value,
+            modifiedDate: columns[13].value
+          };
+          apis.push(api);
+        });
+
+        connection.execSql(request);
+      });
+
+      connection.connect();
+    });
+  }
+
+  /**
+   * Get third-party API credentials from Key Vault
+   */
+  async getAPICredentials(apiId: string): Promise<any> {
+    // First get the Key Vault secret name from database
+    const secretName = await this.getCredentialKeyVaultName(apiId);
+    if (!secretName) {
+      throw new Error('No credentials found for this API');
+    }
+
+    return await this.keyVaultService.getThirdPartyAPICredentials(secretName);
+  }
+
+  /**
+   * Test PAR Brink connection
+   */
+  async testParBrinkConnection(accessToken: string, locationToken: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // This would make an actual SOAP request to PAR Brink
+      // For now, just validate the tokens are not empty
+      if (!accessToken || !locationToken) {
+        return { success: false, error: 'Access token and location token are required' };
+      }
+
+      // TODO: Implement actual SOAP call to PAR Brink API
+      // const soapEnvelope = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:set="http://www.brinksoftware.com/webservices/settings/v2">
+      //    <soapenv:Header/>
+      //    <soapenv:Body>
+      //       <set:GetEmployees>
+      //          <set:locationToken>${locationToken}</set:locationToken>
+      //       </set:GetEmployees>
+      //    </soapenv:Body>
+      // </soapenv:Envelope>`;
+
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  }
+
+  /**
+   * Update third-party API configuration
+   */
+  async updateThirdPartyAPI(id: string, config: Partial<ThirdPartyAPIConfig>): Promise<boolean> {
+    // Implementation for updating API config
+    // Update database record and Key Vault credentials if authConfig is provided
+    return true;
+  }
+
+  /**
+   * Delete third-party API configuration
+   */
+  async deleteThirdPartyAPI(id: string): Promise<boolean> {
+    // Implementation for deleting API config
+    // Remove from database and clean up Key Vault credentials
+    return true;
+  }
+
+  // Private helper methods
+  private async createAPIEndpoints(apiId: string, endpoints: APIEndpoint[]): Promise<void> {
+    // Implementation for storing endpoints
+  }
+
+  private async createAPIRateLimits(apiId: string, rateLimits: any): Promise<void> {
+    // Implementation for storing rate limits
+  }
+
+  private async getCredentialKeyVaultName(apiId: string): Promise<string | null> {
+    // Implementation for getting Key Vault secret name from database
+    return null;
+  }
+
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+}
