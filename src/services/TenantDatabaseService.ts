@@ -52,41 +52,15 @@ export class TenantDatabaseService {
     const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
     this.keyVaultClient = new SecretClient(keyVaultUrl, this.credential);
 
-    // Parse connection string if available, otherwise use individual settings
-    const connectionString = process.env.AZURE_SQL_CONNECTION_STRING;
+    // Production environment (Azure Functions) - use managed identity
+    const isAzureEnvironment = process.env.FUNCTIONS_WORKER_RUNTIME || process.env.WEBSITE_SITE_NAME;
     
-    if (connectionString) {
-      // Parse connection string
-      const config = this.parseConnectionString(connectionString);
-      this.connectionConfig = {
-        server: config.server,
-        authentication: {
-          type: 'sql-password',
-          options: {
-            userName: config.username,
-            password: config.password
-          }
-        },
-        options: {
-          database: config.database,
-          encrypt: config.encrypt,
-          trustServerCertificate: false,
-          requestTimeout: 30000,
-          connectionTimeout: 30000,
-          port: 1433,
-          enableArithAbort: true
-        }
-      };
-    } else {
-      // Fallback to individual environment variables
+    if (isAzureEnvironment) {
+      // Use Azure AD managed identity for production
       this.connectionConfig = {
         server: process.env.SQL_SERVER || 'mosaic.database.windows.net',
         authentication: {
-          type: 'sql-password',
-          options: {
-            userName: process.env.SQL_USERNAME || '',
-            password: process.env.SQL_PASSWORD || ''
-          }
+          type: 'azure-active-directory-default'
         },
         options: {
           database: process.env.SQL_DATABASE || 'moevocorp',
@@ -98,6 +72,54 @@ export class TenantDatabaseService {
           enableArithAbort: true
         }
       };
+    } else {
+      // Development environment - use SQL authentication
+      const connectionString = process.env.AZURE_SQL_CONNECTION_STRING;
+      
+      if (connectionString) {
+        // Parse connection string
+        const config = this.parseConnectionString(connectionString);
+        this.connectionConfig = {
+          server: config.server,
+          authentication: {
+            type: 'default',
+            options: {
+              userName: config.username,
+              password: config.password
+            }
+          },
+          options: {
+            database: config.database,
+            encrypt: config.encrypt || true,
+            trustServerCertificate: false,
+            requestTimeout: 30000,
+            connectionTimeout: 30000,
+            port: 1433,
+            enableArithAbort: true
+          }
+        };
+      } else {
+        // Fallback to individual environment variables
+        this.connectionConfig = {
+          server: process.env.SQL_SERVER || 'mosaic.database.windows.net',
+          authentication: {
+            type: 'default',
+            options: {
+              userName: process.env.SQL_USERNAME || '',
+              password: process.env.SQL_PASSWORD || ''
+            }
+          },
+          options: {
+            database: process.env.SQL_DATABASE || 'moevocorp',
+            encrypt: true,
+            trustServerCertificate: false,
+            requestTimeout: 30000,
+            connectionTimeout: 30000,
+            port: 1433,
+            enableArithAbort: true
+          }
+        };
+      }
     }
   }
 
