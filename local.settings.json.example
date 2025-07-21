@@ -6,8 +6,12 @@
     "FUNCTIONS_EXTENSION_VERSION": "~4",
     "AZURE_KEYVAULT_NAME": "kv-mosaic-ukg-sync",
     "AZURE_KEY_VAULT_URL": "https://kv-mosaic-ukg-sync.vault.azure.net/",
+    "AZURE_SQL_CONNECTION_STRING": "Server=mosaic.database.windows.net;Database=moevocorp;User ID=your-username;Password=your-password;Encrypt=true",
     "SQL_SERVER": "mosaic.database.windows.net",
     "SQL_DATABASE": "moevocorp",
+    "SQL_USERNAME": "your-username",
+    "SQL_PASSWORD": "your-password",
+    "SQL_AUTH_TYPE": "default",
     "AZURE_CLIENT_ID": "your-client-id-here",
     "AZURE_CLIENT_SECRET": "your-client-secret-here",
     "AZURE_TENANT_ID": "your-tenant-id-here"

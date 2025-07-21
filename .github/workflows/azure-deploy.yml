@@ -1,11 +1,12 @@
 name: Deploy to Azure
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  # Disabled auto-deploy on push/PR to prevent overriding manual settings
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
+  workflow_dispatch:  # Only allow manual deployment
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
@@ -74,6 +75,15 @@ jobs:
 
     - name: 'Deploy to Azure Functions (Development)'
       run: |
+        # Set environment variables before deployment
+        az functionapp config appsettings set \
+          --resource-group mosaicRG01 \
+          --name ukg-sync-backend-5rrqlcuxyzlvy \
+          --settings \
+            "SQL_AUTH_TYPE=azure-active-directory-msi-app-service" \
+            "AZURE_SQL_CONNECTION_STRING=Server=mosaic.database.windows.net;Database=moevocorp;Encrypt=true;TrustServerCertificate=false;Authentication=ActiveDirectoryManagedIdentity;"
+        
+        # Deploy the function app
         az functionapp deployment source config-zip \
           --resource-group mosaicRG01 \
           --name ukg-sync-backend-5rrqlcuxyzlvy \

@@ -215,7 +215,7 @@ export async function updateTenant(request: HttpRequest, context: InvocationCont
         
         // For update operations, we allow partial updates
         // Only validate that at least one field is provided
-        const updateFields = ['tenantName', 'companyId', 'baseUrl', 'clientId', 'clientSecret', 'description'];
+        const updateFields = ['tenantName', 'companyId', 'baseUrl', 'clientId', 'clientSecret', 'description', 'isActive'];
         const hasUpdateFields = updateFields.some(field => body[field] !== undefined);
         
         if (!hasUpdateFields) {
@@ -258,7 +258,8 @@ export async function updateTenant(request: HttpRequest, context: InvocationCont
             baseUrl: body.baseUrl || currentTenant.baseUrl,
             clientId: body.clientId || currentTenant.clientId,
             clientSecret: body.clientSecret,
-            description: body.description !== undefined ? body.description : currentTenant.description
+            description: body.description !== undefined ? body.description : currentTenant.description,
+            isActive: body.isActive !== undefined ? body.isActive : currentTenant.isActive
         });
         
         if (!success) {

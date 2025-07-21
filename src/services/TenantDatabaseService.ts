@@ -37,6 +37,7 @@ export interface UpdateTenantRequest {
   clientId: string;
   clientSecret?: string;
   description?: string;
+  isActive?: boolean;
 }
 
 export interface ThirdPartyAPI {
@@ -432,6 +433,7 @@ export class TenantDatabaseService {
             [BaseUrl] = @baseUrl,
             [ClientId] = @clientId,
             [Description] = @description,
+            [IsActive] = @isActive,
             [ModifiedBy] = @modifiedBy,
             [ModifiedDate] = GETUTCDATE()
           WHERE [Id] = @id
@@ -444,6 +446,7 @@ export class TenantDatabaseService {
         tenantRequest.input('baseUrl', sql.NVarChar, tenantData.baseUrl);
         tenantRequest.input('clientId', sql.NVarChar, tenantData.clientId);
         tenantRequest.input('description', sql.NVarChar, tenantData.description || '');
+        tenantRequest.input('isActive', sql.Bit, tenantData.isActive !== undefined ? tenantData.isActive : true);
         tenantRequest.input('modifiedBy', sql.NVarChar, 'system');
 
         await tenantRequest.query(updateTenantQuery);

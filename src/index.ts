@@ -7,6 +7,7 @@ import './functions/oauth';
 import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
+import './functions/parBrinkToUkgETL';
 
 // Export the app for Azure Functions runtime
 export { app };

@@ -28,6 +28,7 @@ export interface UpdateTenantRequest {
     clientId: string;
     clientSecret?: string;
     description?: string;
+    isActive?: boolean;
 }
 export interface ThirdPartyAPI {
     Id: string;
