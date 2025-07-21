@@ -59,7 +59,8 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 AuthType: body.AuthType,
                 KeyVaultSecretName: body.KeyVaultSecretName || `api-${body.Name.toLowerCase().replace(/\s+/g, '-')}-secret`,
                 ConfigurationJson: body.ConfigurationJson,
-                CreatedBy: body.CreatedBy || 'system'
+                CreatedBy: body.CreatedBy || 'system',
+                UpdatedBy: body.UpdatedBy || body.CreatedBy || 'system'
             });
             
             const createdAPI = await db.getThirdPartyAPIById(apiId);

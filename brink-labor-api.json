@@ -1,0 +1,14 @@
+{
+  "Name": "PAR Brink Labor API",
+  "Description": "PAR Brink POS API for labor and employee data synchronization",
+  "Category": "POS",
+  "Provider": "PAR Brink",
+  "BaseUrl": "https://api11.brinkpos.net",
+  "Version": "2.0",
+  "AuthType": "custom",
+  "KeyVaultSecretName": "api-parbrink-labor-test-1737470000000",
+  "ConfigurationJson": "{\"endpoints\":[{\"id\":\"labor-shifts\",\"name\":\"Get Labor Shifts\",\"path\":\"/labor2.svc\",\"method\":\"POST\",\"soapAction\":\"GetLaborShifts\"},{\"id\":\"employees\",\"name\":\"Get Employees\",\"path\":\"/settings2.svc\",\"method\":\"POST\",\"soapAction\":\"GetEmployees\"}],\"rateLimits\":{\"requestsPerSecond\":5,\"requestsPerMinute\":200},\"healthCheckEndpoint\":\"/labor2.svc\"}",
+  "IsActive": true,
+  "CreatedBy": "api-configuration-test",
+  "UpdatedBy": "api-configuration-test"
+}

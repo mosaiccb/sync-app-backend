@@ -634,6 +634,7 @@ export class TenantDatabaseService {
     KeyVaultSecretName: string;
     ConfigurationJson?: string;
     CreatedBy?: string;
+    UpdatedBy?: string;
   }): Promise<string> {
     const id = this.generateGuid();
     
@@ -641,11 +642,11 @@ export class TenantDatabaseService {
       INSERT INTO [dbo].[ThirdPartyAPIs] (
         [Id], [Name], [Description], [Category], [Provider], [BaseUrl], 
         [Version], [AuthType], [KeyVaultSecretName], [ConfigurationJson], 
-        [CreatedBy], [IsActive]
+        [CreatedBy], [UpdatedBy], [IsActive]
       ) VALUES (
         @id, @name, @description, @category, @provider, @baseUrl,
         @version, @authType, @keyVaultSecretName, @configurationJson,
-        @createdBy, 1
+        @createdBy, @updatedBy, 1
       )
     `;
 
@@ -660,7 +661,8 @@ export class TenantDatabaseService {
       authType: apiData.AuthType,
       keyVaultSecretName: apiData.KeyVaultSecretName,
       configurationJson: apiData.ConfigurationJson || null,
-      createdBy: apiData.CreatedBy || 'system'
+      createdBy: apiData.CreatedBy || 'system',
+      updatedBy: apiData.UpdatedBy || apiData.CreatedBy || 'system'
     };
 
     await this.executeQuery(query, parameters);
