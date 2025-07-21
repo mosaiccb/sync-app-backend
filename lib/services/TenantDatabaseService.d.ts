@@ -28,48 +28,25 @@ export interface UpdateTenantRequest {
     clientId: string;
     clientSecret?: string;
     description?: string;
-    isActive?: boolean;
-}
-export interface ThirdPartyAPI {
-    Id: string;
-    Name: string;
-    Description?: string;
-    Category?: string;
-    Provider: string;
-    BaseUrl: string;
-    Version?: string;
-    AuthType: string;
-    KeyVaultSecretName: string;
-    ConfigurationJson?: string;
-    IsActive: boolean;
-    CreatedAt: Date;
-    UpdatedAt: Date;
-    CreatedBy?: string;
-    UpdatedBy?: string;
 }
 export declare class TenantDatabaseService {
+    private connectionConfig;
     private keyVaultClient;
     private credential;
-    private pool;
     constructor();
     /**
-     * Parse SQL connection string to mssql config
+     * Parse SQL connection string
      * @param connectionString Connection string to parse
-     * @returns Parsed connection configuration for mssql
+     * @returns Parsed connection configuration
      */
-    private parseConnectionStringToConfig;
+    private parseConnectionString;
     /**
-     * Get database connection pool with fallback authentication
-     * @returns Promise<sql.ConnectionPool>
+     * Create a new database connection
+     * @returns Promise<Connection>
      */
-    private getConnectionPool;
+    private createConnection;
     /**
-     * Create connection with managed identity fallback to SQL auth
-     * @returns Promise<sql.ConnectionPool>
-     */
-    private createConnectionWithFallback;
-    /**
-     * Execute a SQL query using mssql
+     * Execute a SQL query
      * @param query SQL query string
      * @param parameters Query parameters
      * @returns Promise<any[]>
@@ -128,88 +105,16 @@ export declare class TenantDatabaseService {
      */
     private auditTenantChange;
     /**
+     * Execute a transaction
+     * @param connection Database connection
+     * @param operations Operations to execute in transaction
+     * @returns Promise<void>
+     */
+    private executeTransaction;
+    /**
      * Generate a new GUID
      * @returns string
      */
     private generateGuid;
-    /**
-     * Test database connection for ThirdPartyAPI operations
-     */
-    testThirdPartyAPIConnection(): Promise<{
-        success: boolean;
-        message: string;
-        details?: any;
-    }>;
-    /**
-     * Create or update ThirdPartyAPI (upsert operation)
-     */
-    createOrUpdateThirdPartyAPI(apiData: {
-        Name: string;
-        Description?: string;
-        Category?: string;
-        Provider: string;
-        BaseUrl: string;
-        Version?: string;
-        AuthType: string;
-        KeyVaultSecretName: string;
-        ConfigurationJson?: string;
-        CreatedBy?: string;
-        UpdatedBy?: string;
-    }): Promise<string>;
-    /**
-     * Create a new ThirdPartyAPI
-     */
-    createThirdPartyAPI(apiData: {
-        Name: string;
-        Description?: string;
-        Category?: string;
-        Provider: string;
-        BaseUrl: string;
-        Version?: string;
-        AuthType: string;
-        KeyVaultSecretName: string;
-        ConfigurationJson?: string;
-        CreatedBy?: string;
-        UpdatedBy?: string;
-    }): Promise<string>;
-    /**
-     * Get all ThirdPartyAPIs
-     */
-    getAllThirdPartyAPIs(): Promise<ThirdPartyAPI[]>;
-    /**
-     * Get ThirdPartyAPI by ID
-     */
-    getThirdPartyAPIById(id: string): Promise<ThirdPartyAPI | null>;
-    /**
-     * Get ThirdPartyAPIs by Provider
-     */
-    getThirdPartyAPIsByProvider(provider: string): Promise<ThirdPartyAPI[]>;
-    /**
-     * Update ThirdPartyAPI
-     */
-    updateThirdPartyAPI(id: string, apiData: {
-        Name?: string;
-        Description?: string;
-        Category?: string;
-        Provider?: string;
-        BaseUrl?: string;
-        Version?: string;
-        AuthType?: string;
-        KeyVaultSecretName?: string;
-        ConfigurationJson?: string;
-        UpdatedBy?: string;
-    }): Promise<boolean>;
-    /**
-     * Clean up invalid ConfigurationJson values (fix "undefined" strings)
-     */
-    cleanupConfigurationJson(): Promise<{
-        success: boolean;
-        message: string;
-        updated: number;
-    }>;
-    /**
-     * Delete ThirdPartyAPI (soft delete)
-     */
-    deleteThirdPartyAPI(id: string, deletedBy?: string): Promise<boolean>;
 }
 //# sourceMappingURL=TenantDatabaseService.d.ts.map
