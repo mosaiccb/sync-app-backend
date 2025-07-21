@@ -10,6 +10,7 @@ import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
 import './functions/parBrinkToUkgETL';
+import './functions/ukgReadyAPI';
 
 // Export the app for Azure Functions runtime
 export { app };

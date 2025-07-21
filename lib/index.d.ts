@@ -7,5 +7,6 @@ import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
 import './functions/parBrinkToUkgETL';
+import './functions/ukgReadyAPI';
 export { app };
 //# sourceMappingURL=index.d.ts.map
