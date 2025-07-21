@@ -10,6 +10,24 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
         const db = new TenantDatabaseService();
         
         if (method === 'GET') {
+            // Check for cleanup operation
+            if (request.query.get('cleanup') === 'json') {
+                context.log('Running ConfigurationJson cleanup...');
+                const cleanupResult = await db.cleanupConfigurationJson();
+                return {
+                    status: 200,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*',
+                        'Content-Type': 'application/json'
+                    },
+                    jsonBody: {
+                        success: cleanupResult.success,
+                        message: cleanupResult.message,
+                        updated: cleanupResult.updated
+                    }
+                };
+            }
+            
             // Get all APIs or by provider
             const provider = request.query.get('provider');
             
