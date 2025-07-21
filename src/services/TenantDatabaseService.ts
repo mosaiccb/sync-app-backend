@@ -717,7 +717,7 @@ export class TenantDatabaseService {
       version: apiData.Version || null,
       authType: apiData.AuthType,
       keyVaultSecretName: apiData.KeyVaultSecretName,
-      configurationJson: apiData.ConfigurationJson || null,
+      configurationJson: apiData.ConfigurationJson && apiData.ConfigurationJson !== "undefined" ? apiData.ConfigurationJson : null,
       createdBy: apiData.CreatedBy || 'system',
       updatedBy: apiData.UpdatedBy || apiData.CreatedBy || 'system'
     };
@@ -891,7 +891,7 @@ export class TenantDatabaseService {
       }
       if (apiData.ConfigurationJson !== undefined) {
         updateFields.push('[ConfigurationJson] = @configurationJson');
-        parameters.configurationJson = apiData.ConfigurationJson;
+        parameters.configurationJson = apiData.ConfigurationJson && apiData.ConfigurationJson !== "undefined" ? apiData.ConfigurationJson : null;
       }
 
       if (updateFields.length === 0) {
@@ -922,6 +922,33 @@ export class TenantDatabaseService {
     } catch (error) {
       await transaction.rollback();
       throw error;
+    }
+  }
+
+  /**
+   * Clean up invalid ConfigurationJson values (fix "undefined" strings)
+   */
+  async cleanupConfigurationJson(): Promise<{ success: boolean; message: string; updated: number }> {
+    try {
+      const query = `
+        UPDATE [dbo].[ThirdPartyAPIs] 
+        SET [ConfigurationJson] = NULL
+        WHERE [ConfigurationJson] IN ('undefined', 'null', '') 
+          OR [ConfigurationJson] IS NULL
+      `;
+
+      const pool = await this.getConnectionPool();
+      const request = pool.request();
+      const result = await request.query(query);
+      
+      return {
+        success: true,
+        message: 'Successfully cleaned up invalid ConfigurationJson values',
+        updated: result.rowsAffected[0] || 0
+      };
+    } catch (error: any) {
+      console.error('Failed to cleanup ConfigurationJson:', error);
+      return { success: false, message: error?.message || error, updated: 0 };
     }
   }
 

@@ -200,6 +200,14 @@ export declare class TenantDatabaseService {
         UpdatedBy?: string;
     }): Promise<boolean>;
     /**
+     * Clean up invalid ConfigurationJson values (fix "undefined" strings)
+     */
+    cleanupConfigurationJson(): Promise<{
+        success: boolean;
+        message: string;
+        updated: number;
+    }>;
+    /**
      * Delete ThirdPartyAPI (soft delete)
      */
     deleteThirdPartyAPI(id: string, deletedBy?: string): Promise<boolean>;
