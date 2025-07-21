@@ -1,10 +1,12 @@
 // Entry point for Azure Functions
-// This file imports all function registrations
+import { app } from '@azure/functions';
 
 // Import all function modules to ensure they register with the app
 import './functions/tenants';
 import './functions/oauth';
 import './functions/health';
+import './functions/thirdPartyAPIs';
+import './functions/testDbConnection';
 
-// The functions are automatically registered with the app object
-// when the modules are imported
+// Export the app for Azure Functions runtime
+export { app };
