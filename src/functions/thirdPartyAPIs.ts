@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { ThirdPartyAPIDatabase } from '../services/ThirdPartyAPIDatabase';
+import { TenantDatabaseService } from '../services/TenantDatabaseService';
 
 export async function thirdPartyAPIs(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     context.log('Third Party APIs endpoint called');
@@ -7,7 +7,7 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
     const method = request.method;
     
     try {
-        const db = new ThirdPartyAPIDatabase();
+        const db = new TenantDatabaseService();
         
         if (method === 'GET') {
             // Get all APIs or by provider
@@ -15,9 +15,9 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
             
             let apis;
             if (provider) {
-                apis = await db.getAPIsByProvider(provider);
+                apis = await db.getThirdPartyAPIsByProvider(provider);
             } else {
-                apis = await db.getAllAPIs();
+                apis = await db.getAllThirdPartyAPIs();
             }
             
             return {
@@ -49,7 +49,7 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 };
             }
             
-            const apiId = await db.createAPI({
+            const apiId = await db.createThirdPartyAPI({
                 Name: body.Name,
                 Description: body.Description,
                 Category: body.Category || 'API',
@@ -57,12 +57,12 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
                 BaseUrl: body.BaseUrl,
                 Version: body.Version,
                 AuthType: body.AuthType,
+                KeyVaultSecretName: body.KeyVaultSecretName || `api-${body.Name.toLowerCase().replace(/\s+/g, '-')}-secret`,
                 ConfigurationJson: body.ConfigurationJson,
-                IsActive: body.IsActive !== false,
                 CreatedBy: body.CreatedBy || 'system'
             });
             
-            const createdAPI = await db.getAPIById(apiId);
+            const createdAPI = await db.getThirdPartyAPIById(apiId);
             
             return {
                 status: 201,
