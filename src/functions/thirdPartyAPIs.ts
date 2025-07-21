@@ -79,6 +79,62 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
             };
         }
         
+        if (method === 'PUT') {
+            // Update existing API configuration
+            const body = await request.json() as any;
+            const id = body.Id || body.id;
+            
+            if (!id) {
+                return {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        success: false,
+                        error: 'Missing API configuration ID'
+                    })
+                };
+            }
+            
+            if (!body.Name || !body.Provider || !body.BaseUrl || !body.AuthType) {
+                return {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        success: false,
+                        error: 'Missing required fields: Name, Provider, BaseUrl, AuthType'
+                    })
+                };
+            }
+            
+            await db.updateThirdPartyAPI(id, {
+                Name: body.Name,
+                Description: body.Description,
+                Category: body.Category || 'API',
+                Provider: body.Provider,
+                BaseUrl: body.BaseUrl,
+                Version: body.Version,
+                AuthType: body.AuthType,
+                KeyVaultSecretName: body.KeyVaultSecretName,
+                ConfigurationJson: body.ConfigurationJson,
+                UpdatedBy: body.UpdatedBy || 'system'
+            });
+            
+            const updatedAPI = await db.getThirdPartyAPIById(id);
+            
+            return {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    success: true,
+                    message: 'API configuration updated successfully',
+                    data: updatedAPI
+                })
+            };
+        }
+        
         return {
             status: 405,
             headers: { 'Content-Type': 'application/json' },
@@ -104,7 +160,7 @@ export async function thirdPartyAPIs(request: HttpRequest, context: InvocationCo
 }
 
 app.http('thirdPartyAPIs', {
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
     authLevel: 'anonymous',
     handler: thirdPartyAPIs
 });
