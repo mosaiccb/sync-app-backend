@@ -33,6 +33,11 @@ export declare function getParBrinkConfigurations(request: HttpRequest, context:
  * Get all locations with timezone information for multi-state expansion
  * GET /api/par-brink/locations-with-timezones
  */
+/**
+ * Get detailed labor information for a specific hour block
+ * POST /api/par-brink/labor-hour-detail
+ */
+export declare function getParBrinkLaborHourDetail(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 export declare function getLocationsWithTimezones(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 /**
  * Generate comprehensive pizza restaurant overstaffing report
