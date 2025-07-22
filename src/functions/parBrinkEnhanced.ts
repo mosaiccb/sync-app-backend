@@ -2,17 +2,8 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { KeyVaultService } from '../services/keyVaultService';
 // import { ThirdPartyAPIDatabase } from '../services/ThirdPartyAPIDatabase';
 
-// PAR Brink rate limiting constants - REDUCED for development/testing
-const PAR_BRINK_RATE_LIMITS = {
-    MULTI_TENANT_CONCURRENT_CALLS: 10,
-    MULTI_TENANT_SLEEP_MS: 1000, // 1 second instead of 2 minutes
-    SINGLE_TENANT_CONCURRENT_CALLS: 15,
-    SINGLE_TENANT_SLEEP_MS: 500, // 0.5 seconds instead of 1 minute
-    MAX_LOCATIONS_PER_BATCH: 500 // PAR Brink best practice limit
-};
-
+// PAR Brink rate limiting - DISABLED for development
 // Rate limiting state management
-let lastApiCallTime = 0;
 let currentConcurrentCalls = 0;
 
 /**
@@ -23,35 +14,7 @@ async function enforceParBrinkRateLimit(context: InvocationContext): Promise<voi
     // In production, uncomment the rate limiting logic below if needed
     context.log(`⚡ Rate limiting bypassed for development - immediate API call`);
     currentConcurrentCalls++;
-    lastApiCallTime = Date.now();
     return;
-    
-    /* PRODUCTION RATE LIMITING CODE (currently disabled):
-    const now = Date.now();
-    const timeSinceLastCall = now - lastApiCallTime;
-    
-    // For multi-tenant server (default assumption for Azure Functions)
-    const requiredSleep = PAR_BRINK_RATE_LIMITS.MULTI_TENANT_SLEEP_MS;
-    const maxConcurrent = PAR_BRINK_RATE_LIMITS.MULTI_TENANT_CONCURRENT_CALLS;
-    
-    // Check concurrent calls
-    if (currentConcurrentCalls >= maxConcurrent) {
-        context.log(`⏳ Rate limit: waiting for concurrent calls to complete (${currentConcurrentCalls}/${maxConcurrent})`);
-        while (currentConcurrentCalls >= maxConcurrent) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    }
-    
-    // Check time-based rate limiting
-    if (timeSinceLastCall < requiredSleep) {
-        const waitTime = requiredSleep - timeSinceLastCall;
-        context.log(`⏳ PAR Brink rate limit: sleeping ${Math.round(waitTime / 1000)}s (best practice: ${requiredSleep / 1000}s between calls)`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-    
-    currentConcurrentCalls++;
-    lastApiCallTime = Date.now();
-    */
 }
 
 /**
