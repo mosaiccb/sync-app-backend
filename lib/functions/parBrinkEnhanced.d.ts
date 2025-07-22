@@ -20,6 +20,11 @@ export declare function getParBrinkEmployees(request: HttpRequest, context: Invo
  */
 export declare function getParBrinkLaborShifts(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 /**
+ * Get PAR Brink sales data with enhanced filtering
+ * POST /api/par-brink/sales
+ */
+export declare function getParBrinkSales(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
+/**
  * Get PAR Brink configurations from database
  * GET /api/par-brink/configurations
  */
