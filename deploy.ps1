@@ -17,6 +17,7 @@
 #   .\deploy.ps1                                        # Basic deployment (will auto-commit)
 #   .\deploy.ps1 -CommitMessage "Fix API endpoint"      # Custom commit message
 #   .\deploy.ps1 -SkipBuild                            # Skip npm build step
+#   .\deploy.ps1 -AutoDeploy                           # Fully automated Kudu deployment
 #   .\deploy.ps1 -VerboseOutput                        # Verbose output
 #   .\deploy.ps1 -FunctionAppName "other-app"          # Override function app name
 
@@ -35,6 +36,9 @@ param(
     
     [Parameter(Mandatory = $false)]
     [switch]$VerboseOutput,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$AutoDeploy,
     
     [Parameter(Mandatory = $false)]
     [string]$CommitMessage = "🚀 PowerShell deployment: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -263,21 +267,181 @@ else {
     Write-Host "⏭️  Skipping build (-SkipBuild specified)" -ForegroundColor Yellow
 }
 
-# 🎯 Ready for VS Code deployment
-Write-Host "`n🎯 READY FOR RIGHT-CLICK DEPLOYMENT!" -ForegroundColor Green -BackgroundColor DarkGreen
-Write-Host "" -ForegroundColor Green
-Write-Host "📋 Next Steps:" -ForegroundColor Cyan
-Write-Host "  1. Right-click on the Azure Functions extension in VS Code" -ForegroundColor White
-Write-Host "  2. Select 'Deploy to Function App...' " -ForegroundColor White
-Write-Host "  3. Choose: $FunctionAppName" -ForegroundColor Yellow
-Write-Host "" -ForegroundColor Green
-Write-Host "✅ Project is built and committed" -ForegroundColor Green
-Write-Host "✅ All 14 functions are properly registered in lib/index.js" -ForegroundColor Green
-Write-Host "✅ Conflicting entry points have been removed" -ForegroundColor Green
-Write-Host "✅ Ready for reliable VS Code deployment" -ForegroundColor Green
-Write-Host ""
-Write-Host "💡 VS Code right-click deployment works better than func publish for this project" -ForegroundColor Cyan
-Write-Host "💡 It will show all functions properly and avoid the '0 functions found' issue" -ForegroundColor Cyan
+# 🎯 Deploy using Kudu API (same as VS Code right-click)
+if ($AutoDeploy) {
+    Write-Host "`n🚀 AUTOMATED KUDU DEPLOYMENT STARTING!" -ForegroundColor Green -BackgroundColor DarkBlue
+    Write-Host ""
+    
+    try {
+        # Get deployment credentials
+        Write-Host "🔐 Getting deployment credentials..." -ForegroundColor Cyan
+        $publishProfile = az functionapp deployment list-publishing-profiles --name $FunctionAppName --resource-group $ResourceGroup --query "[?publishMethod=='MSDeploy']" | ConvertFrom-Json
+        
+        if (-not $publishProfile -or $publishProfile.Count -eq 0) {
+            throw "Could not retrieve publish profile for $FunctionAppName"
+        }
+        
+        $deployProfile = $publishProfile[0]
+        $kuduUrl = "https://$($deployProfile.publishUrl)"
+        $username = $deployProfile.userName
+        $password = $deployProfile.userPWD
+        
+        Write-Host "📍 Kudu URL: $kuduUrl" -ForegroundColor Cyan
+        Write-Host "👤 Username: $username" -ForegroundColor Cyan
+        
+        # Create deployment package (zip)
+        Write-Host "📦 Creating deployment package..." -ForegroundColor Yellow
+        $tempZip = "$env:TEMP\azure-functions-deploy-$(Get-Date -Format 'yyyyMMdd-HHmmss').zip"
+        
+        # Files to include in deployment package
+        $filesToZip = @(
+            "host.json",
+            "package.json", 
+            "lib\*",
+            "node_modules\*"
+        )
+        
+        # Create zip using PowerShell
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
+        
+        $zip = [System.IO.Compression.ZipFile]::Open($tempZip, 'Create')
+        
+        # Add host.json
+        if (Test-Path "host.json") {
+            $entry = $zip.CreateEntry("host.json")
+            $stream = $entry.Open()
+            $content = [System.IO.File]::ReadAllBytes("host.json")
+            $stream.Write($content, 0, $content.Length)
+            $stream.Close()
+            Write-Host "  ✅ Added host.json" -ForegroundColor DarkGreen
+        }
+        
+        # Add package.json
+        if (Test-Path "package.json") {
+            $entry = $zip.CreateEntry("package.json")
+            $stream = $entry.Open()
+            $content = [System.IO.File]::ReadAllBytes("package.json")
+            $stream.Write($content, 0, $content.Length)
+            $stream.Close()
+            Write-Host "  ✅ Added package.json" -ForegroundColor DarkGreen
+        }
+        
+        # Add lib directory (compiled functions)
+        if (Test-Path "lib") {
+            $libFiles = Get-ChildItem "lib" -Recurse -File
+            foreach ($file in $libFiles) {
+                $relativePath = $file.FullName.Substring((Get-Location).Path.Length + 1).Replace('\', '/')
+                $entry = $zip.CreateEntry($relativePath)
+                $stream = $entry.Open()
+                $content = [System.IO.File]::ReadAllBytes($file.FullName)
+                $stream.Write($content, 0, $content.Length)
+                $stream.Close()
+            }
+            Write-Host "  ✅ Added lib directory ($($libFiles.Count) files)" -ForegroundColor DarkGreen
+        }
+        
+        # Add essential node_modules
+        if (Test-Path "node_modules") {
+            # Only add production dependencies to keep package smaller
+            $essentialModules = @(
+                "@azure/functions",
+                "axios", 
+                "soap",
+                "mssql"
+            )
+            
+            $nodeModuleCount = 0
+            foreach ($module in $essentialModules) {
+                $modulePath = "node_modules\$module"
+                if (Test-Path $modulePath) {
+                    $moduleFiles = Get-ChildItem $modulePath -Recurse -File
+                    foreach ($file in $moduleFiles) {
+                        $relativePath = $file.FullName.Substring((Get-Location).Path.Length + 1).Replace('\', '/')
+                        $entry = $zip.CreateEntry($relativePath)
+                        $stream = $entry.Open()
+                        $content = [System.IO.File]::ReadAllBytes($file.FullName)
+                        $stream.Write($content, 0, $content.Length)
+                        $stream.Close()
+                        $nodeModuleCount++
+                    }
+                }
+            }
+            Write-Host "  ✅ Added essential node_modules ($nodeModuleCount files)" -ForegroundColor DarkGreen
+        }
+        
+        $zip.Dispose()
+        
+        $zipSize = [Math]::Round((Get-Item $tempZip).Length / 1MB, 2)
+        Write-Host "📦 Deployment package created: $zipSize MB" -ForegroundColor Green
+        
+        # Deploy using Kudu API
+        Write-Host "🚀 Uploading to Kudu..." -ForegroundColor Yellow
+        
+        $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($username):$($password)"))
+        $headers = @{
+            "Authorization" = "Basic $base64Auth"
+            "Content-Type"  = "application/octet-stream"
+        }
+        
+        $kuduDeployUrl = "$kuduUrl/api/zipdeploy"
+        
+        # Upload the zip file
+        $response = Invoke-RestMethod -Uri $kuduDeployUrl -Method POST -InFile $tempZip -Headers $headers -TimeoutSec 300
+        
+        Write-Host "✅ Kudu deployment completed successfully!" -ForegroundColor Green
+        
+        # Wait a moment for functions to initialize
+        Write-Host "⏳ Waiting for functions to initialize..." -ForegroundColor Cyan
+        Start-Sleep -Seconds 10
+        
+        # Test the deployment
+        Write-Host "🧪 Testing deployed functions..." -ForegroundColor Cyan
+        try {
+            $testUrl = "https://$FunctionAppName.azurewebsites.net/api/health"
+            $testResponse = Invoke-RestMethod -Uri $testUrl -Method GET -TimeoutSec 30
+            Write-Host "✅ Health check passed!" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "⚠️  Health check failed, but deployment may still be successful" -ForegroundColor Yellow
+        }
+        
+        # Cleanup
+        Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+        
+        Write-Host ""
+        Write-Host "🎉 AUTOMATED DEPLOYMENT COMPLETED!" -ForegroundColor Green -BackgroundColor DarkGreen
+        Write-Host "🌐 Function App URL: https://$FunctionAppName.azurewebsites.net" -ForegroundColor Cyan
+        Write-Host "📊 Dashboard URL: https://agreeable-sand-031bc4e10.2.azurestaticapps.net/sales-labor-dashboard" -ForegroundColor Cyan
+        
+    }
+    catch {
+        Write-Host "❌ Automated deployment failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "🔄 Falling back to manual VS Code deployment..." -ForegroundColor Yellow
+        $AutoDeploy = $false
+    }
+}
+
+if (-not $AutoDeploy) {
+    # 🎯 Ready for VS Code deployment
+    Write-Host "`n🎯 READY FOR RIGHT-CLICK DEPLOYMENT!" -ForegroundColor Green -BackgroundColor DarkGreen
+    Write-Host "" -ForegroundColor Green
+    Write-Host "📋 Next Steps:" -ForegroundColor Cyan
+    Write-Host "  1. Right-click on the Azure Functions extension in VS Code" -ForegroundColor White
+    Write-Host "  2. Select 'Deploy to Function App...' " -ForegroundColor White
+    Write-Host "  3. Choose: $FunctionAppName" -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor Green
+    Write-Host "✅ Project is built and committed" -ForegroundColor Green
+    Write-Host "✅ All 14 functions are properly registered in lib/index.js" -ForegroundColor Green
+    Write-Host "✅ Conflicting entry points have been removed" -ForegroundColor Green
+    Write-Host "✅ Ready for reliable VS Code deployment" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "💡 VS Code right-click deployment works better than func publish for this project" -ForegroundColor Cyan
+    Write-Host "💡 It will show all functions properly and avoid the '0 functions found' issue" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "🔧 TIP: Use -AutoDeploy flag for fully automated deployment" -ForegroundColor DarkGray
+}
 Write-Host ""
 Write-Host "🚀 Deployment preparation completed successfully!" -ForegroundColor Green
 exit 0

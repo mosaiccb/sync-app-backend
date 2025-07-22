@@ -70,10 +70,21 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
         isActive: loc.isActive
       }));
 
-    const responseData = {
-      success: true,
+    // Create a configuration object that matches frontend expectations
+    const configurationData = {
+      id: 'default-parbrink-config',
+      name: 'PAR Brink Default Configuration',
+      provider: 'PAR Brink',
       accessToken: config.accessToken, // Frontend needs this for API calls
       locations: sanitizedLocations,
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    const responseData = {
+      success: true,
+      data: [configurationData], // Frontend expects array of configurations
+      totalConfigurations: 1,
       totalLocations: sanitizedLocations.length
     };
 
