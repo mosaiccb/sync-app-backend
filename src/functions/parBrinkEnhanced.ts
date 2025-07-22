@@ -574,6 +574,57 @@ async function callRealParBrinkLaborShifts(
     businessDate: string,
     context: InvocationContext
 ): Promise<any> {
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2">
+        <soap:Header />
+        <soap:Body>
+            <lab:GetLaborShifts>
+                <lab:businessDate>${businessDate}</lab:businessDate>
+            </lab:GetLaborShifts>
+        </soap:Body>
+    </soap:Envelope>`;
+
+    try {
+        const response = await fetch('https://api11.brinkpos.net/Labor2.svc', {
+            method: 'POST',
+            headers: {
+                'AccessToken': accessToken,
+                'LocationToken': locationToken,
+                'Content-Type': 'text/xml',
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/GetLaborShifts'
+            },
+            body: soapEnvelope
+        });
+
+        if (!response.ok) {
+            throw new Error(`PAR Brink Labor API request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const xmlText = await response.text();
+        context.log('⏰ Received labor data from PAR Brink Labor2 API');
+
+        // Parse XML and extract labor shift data
+        const laborData = parseParBrinkLaborXML(xmlText, businessDate, context);
+        context.log(`✅ Extracted ${laborData.shifts.length} labor shifts from PAR Brink`);
+        
+        return laborData;
+
+    } catch (error) {
+        context.error('❌ Failed to call real PAR Brink Labor2 API, using simulated data:', error);
+        // Fall back to employee-based simulation
+        return await callRealParBrinkLaborShiftsFallback(accessToken, locationToken, businessDate, context);
+    }
+}
+
+/**
+ * Fallback method using employee data for labor shifts
+ */
+async function callRealParBrinkLaborShiftsFallback(
+    accessToken: string, 
+    locationToken: string, 
+    businessDate: string,
+    context: InvocationContext
+): Promise<any> {
     // TODO: Implement actual labor shifts SOAP call when endpoint is available
     context.log('⚠️ Labor shifts endpoint not yet implemented - using simulated data');
     
@@ -623,23 +674,23 @@ async function callRealParBrinkSales(
     context: InvocationContext
 ): Promise<any> {
     const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:set="http://www.brinksoftware.com/webservices/settings/v2">
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sal="http://www.brinksoftware.com/webservices/sales/v2">
         <soap:Header />
         <soap:Body>
-            <set:GetSalesData>
-                <set:businessDate>${businessDate}</set:businessDate>
-            </set:GetSalesData>
+            <sal:GetOrders>
+                <sal:businessDate>${businessDate}</sal:businessDate>
+            </sal:GetOrders>
         </soap:Body>
     </soap:Envelope>`;
 
     try {
-        const response = await fetch('https://api11.brinkpos.net/Settings2.svc', {
+        const response = await fetch('https://api11.brinkpos.net/Sales2.svc', {
             method: 'POST',
             headers: {
                 'AccessToken': accessToken,
                 'LocationToken': locationToken,
                 'Content-Type': 'text/xml',
-                'SOAPAction': 'http://www.brinksoftware.com/webservices/settings/v2/ISettingsWebService2/GetSalesData'
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/GetOrders'
             },
             body: soapEnvelope
         });
@@ -730,6 +781,35 @@ function parseParBrinkSalesXML(xmlText: string, businessDate: string, context: I
         context.log('❌ Error parsing PAR Brink sales XML:', error);
         // Return simulated data on parse error
         return generateRealisticSalesData(businessDate, 'unknown');
+    }
+}
+
+/**
+ * Parse PAR Brink labor XML response
+ */
+function parseParBrinkLaborXML(xmlText: string, businessDate: string, context: InvocationContext): any {
+    try {
+        // Simple regex-based XML parsing for labor data
+        const totalLaborHours = extractXmlValue(xmlText, 'TotalLaborHours');
+        const totalLaborCost = extractXmlValue(xmlText, 'TotalLaborCost');
+        
+        return {
+            businessDate,
+            shifts: [], // TODO: Parse individual shifts if available
+            laborHours: parseFloat(totalLaborHours || '0'),
+            laborCost: parseFloat(totalLaborCost || '0'),
+            retrievedAt: new Date().toISOString()
+        };
+    } catch (error) {
+        context.log('❌ Error parsing PAR Brink labor XML:', error);
+        // Return empty labor data on parse error
+        return {
+            businessDate,
+            shifts: [],
+            laborHours: 0,
+            laborCost: 0,
+            retrievedAt: new Date().toISOString()
+        };
     }
 }
 
