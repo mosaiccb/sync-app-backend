@@ -830,11 +830,12 @@ async function callRealParBrinkSales(
     const locationInfo = locationMapping[locationToken];
     const timezone = locationInfo?.timezone || 'America/Denver'; // Default to Mountain Time
     
-    // Use provided credentials (real values from request)
-    const testAccessToken = accessToken;
+    // Use environment variable for access token if available, otherwise use provided credentials
+    const envAccessToken = process.env.PAR_BRINK_ACCESS_TOKEN;
+    const testAccessToken = envAccessToken || accessToken;
     const testLocationToken = locationToken;
     
-    context.log(`🔧 Using access token: ${testAccessToken === "YOUR_ACCESS_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
+    context.log(`🔧 Using access token: ${envAccessToken ? "FROM_ENV_VAR" : (testAccessToken === "YOUR_ACCESS_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED")}`);
     context.log(`🔧 Using location token: ${testLocationToken === "YOUR_LOCATION_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
     context.log(`🌍 Location timezone: ${timezone} (${locationInfo?.state || 'Unknown State'})`);
     
@@ -1344,14 +1345,20 @@ async function callParBrinkSoapAPI(
     try {
         context.log(`🔌 Calling PAR Brink SOAP method: ${method}`);
         
+        // Use environment variable for access token if available, otherwise use provided credentials
+        const envAccessToken = process.env.PAR_BRINK_ACCESS_TOKEN;
+        const finalAccessToken = envAccessToken || params.accessToken;
+        
+        context.log(`🔧 Using access token: ${envAccessToken ? "FROM_ENV_VAR" : (finalAccessToken === "YOUR_ACCESS_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED")}`);
+        
         // Use actual PAR Brink SOAP API endpoints
         switch (method) {
             case 'GetEmployees':
-                return await callRealParBrinkEmployees(params.accessToken, params.locationToken, context);
+                return await callRealParBrinkEmployees(finalAccessToken, params.locationToken, context);
             case 'GetLaborShifts':
-                return await callRealParBrinkLaborShifts(params.accessToken, params.locationToken, params.businessDate, context);
+                return await callRealParBrinkLaborShifts(finalAccessToken, params.locationToken, params.businessDate, context);
             case 'GetSales':
-                return await callRealParBrinkSales(params.accessToken, params.locationToken, params.businessDate, context);
+                return await callRealParBrinkSales(finalAccessToken, params.locationToken, params.businessDate, context);
             default:
                 // Fall back to simulated data for unsupported methods
                 context.log(`⚠️ Using simulated data for unsupported method: ${method}`);
@@ -1690,8 +1697,20 @@ export async function getParBrinkLaborHourDetail(request: HttpRequest, context: 
     try {
         context.log('👥 Fetching detailed labor information for specific hour block');
         
+        // Handle CORS preflight
+        if (request.method === 'OPTIONS') {
+            return {
+                status: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                }
+            };
+        }
+        
         const requestBody = await request.text();
-        if (!requestBody) {
+        if (!requestBody || requestBody.trim() === '') {
             return {
                 status: 400,
                 headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
