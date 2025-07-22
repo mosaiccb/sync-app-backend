@@ -29,4 +29,9 @@ export declare function getParBrinkSales(request: HttpRequest, context: Invocati
  * GET /api/par-brink/configurations
  */
 export declare function getParBrinkConfigurations(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
+/**
+ * Generate comprehensive pizza restaurant overstaffing report
+ * POST /api/par-brink/overstaffing-report
+ */
+export declare function getParBrinkOverstaffingReport(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 //# sourceMappingURL=parBrinkEnhanced.d.ts.map

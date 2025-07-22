@@ -608,8 +608,7 @@ function generateRealisticEmployeeData(locationToken: string, context: Invocatio
 }
 
 /**
- * Call actual PAR Brink GetLaborShifts SOAP API (if available)
- * For now, we'll use simulated data since we don't have the labor shifts SOAP endpoint implemented
+ * Call actual PAR Brink GetShifts SOAP API from Labor2.svc
  */
 async function callRealParBrinkLaborShifts(
     accessToken: string, 
@@ -617,26 +616,36 @@ async function callRealParBrinkLaborShifts(
     businessDate: string,
     context: InvocationContext
 ): Promise<any> {
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2"><soap:Header /><soap:Body><lab:GetLaborShifts><lab:businessDate>${businessDate}</lab:businessDate></lab:GetLaborShifts></soap:Body></soap:Envelope>`;
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2"><soapenv:Header/><soapenv:Body><lab:GetShifts><lab:request><lab:BusinessDate>${businessDate}</lab:BusinessDate></lab:request></lab:GetShifts></soapenv:Body></soapenv:Envelope>`;
 
     try {
+        context.log('⏰ Calling PAR Brink Labor2.svc GetShifts API...');
+        context.log(`🗓️ Business Date: ${businessDate}`);
+        context.log(`🔑 AccessToken: ${accessToken.substring(0, 10)}...`);
+        context.log(`📍 LocationToken: ${locationToken.substring(0, 10)}...`);
+        
         const response = await fetch('https://api11.brinkpos.net/Labor2.svc', {
             method: 'POST',
             headers: {
                 'AccessToken': accessToken,
                 'LocationToken': locationToken,
                 'Content-Type': 'text/xml',
-                'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/GetLaborShifts'
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/getShifts'
             },
             body: soapEnvelope
         });
 
+        context.log(`📊 PAR Brink Labor API response status: ${response.status}`);
+
         if (!response.ok) {
+            const errorText = await response.text();
+            context.error(`❌ PAR Brink Labor API error: ${response.status} ${response.statusText}`);
+            context.error(`❌ Error response: ${errorText}`);
             throw new Error(`PAR Brink Labor API request failed: ${response.status} ${response.statusText}`);
         }
 
         const xmlText = await response.text();
-        context.log('⏰ Received labor data from PAR Brink Labor2 API');
+        context.log('⏰ Received labor shift data from PAR Brink Labor2 API');
 
         // Parse XML and extract labor shift data
         const laborData = parseParBrinkLaborXML(xmlText, businessDate, context);
@@ -708,9 +717,9 @@ async function callRealParBrinkSales(
     businessDate: string,
     context: InvocationContext
 ): Promise<any> {
-    // Hardcoded test credentials for development (replace with your actual values)
-    const testAccessToken = accessToken || "YOUR_ACCESS_TOKEN_HERE";
-    const testLocationToken = locationToken || "YOUR_LOCATION_TOKEN_HERE";
+    // Use provided credentials (real values from request)
+    const testAccessToken = accessToken;
+    const testLocationToken = locationToken;
     
     context.log(`🔧 Using access token: ${testAccessToken === "YOUR_ACCESS_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
     context.log(`🔧 Using location token: ${testLocationToken === "YOUR_LOCATION_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
@@ -731,7 +740,7 @@ async function callRealParBrinkSales(
                 'AccessToken': testAccessToken,
                 'LocationToken': testLocationToken,
                 'Content-Type': 'text/xml',
-                'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/GetOrders'
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/getOrders'
             },
             body: soapEnvelope
         });
@@ -851,29 +860,81 @@ function parseParBrinkSalesXML(xmlText: string, businessDate: string, context: I
 }
 
 /**
- * Parse PAR Brink labor XML response
+ * Parse PAR Brink Labor API XML response from GetShifts endpoint
  */
 function parseParBrinkLaborXML(xmlText: string, businessDate: string, context: InvocationContext): any {
     try {
-        // Simple regex-based XML parsing for labor data
-        const totalLaborHours = extractXmlValue(xmlText, 'TotalLaborHours');
-        const totalLaborCost = extractXmlValue(xmlText, 'TotalLaborCost');
+        context.log('⏰ Parsing labor shift XML from PAR Brink Labor2.svc...');
         
-        return {
+        // Parse individual shift data based on PAR Brink Labor2 API structure
+        const shiftMatches = xmlText.match(/<Shift[^>]*>[\s\S]*?<\/Shift>/g);
+        const shifts: any[] = [];
+        let totalHours = 0;
+        let totalLaborCost = 0;
+        
+        if (shiftMatches) {
+            shiftMatches.forEach(shiftXml => {
+                const shift: any = {
+                    id: extractXmlValue(shiftXml, 'Id') || '',
+                    employeeId: extractXmlValue(shiftXml, 'EmployeeId') || '',
+                    jobId: extractXmlValue(shiftXml, 'JobId') || '',
+                    businessDate: extractXmlValue(shiftXml, 'BusinessDate') || businessDate,
+                    clockOutBusinessDate: extractXmlValue(shiftXml, 'ClockOutBusinessDate') || businessDate,
+                    startTime: extractXmlValue(shiftXml, 'StartTime') || '',
+                    endTime: extractXmlValue(shiftXml, 'EndTime') || '',
+                    modifiedTime: extractXmlValue(shiftXml, 'ModifiedTime') || '',
+                    number: parseInt(extractXmlValue(shiftXml, 'Number') || '1'),
+                    payRate: parseFloat(extractXmlValue(shiftXml, 'PayRate') || '0'),
+                    declaredTips: parseFloat(extractXmlValue(shiftXml, 'DeclaredTips') || '0'),
+                    minutesWorked: parseInt(extractXmlValue(shiftXml, 'MinutesWorked') || '0'),
+                    regularMinutesWorked: parseInt(extractXmlValue(shiftXml, 'RegularMinutesWorked') || '0'),
+                    extendedMinutesWorked: parseInt(extractXmlValue(shiftXml, 'ExtendedMinutesWorked') || '0'),
+                    overtimeMinutesWorked: parseInt(extractXmlValue(shiftXml, 'OvertimeMinutesWorked') || '0')
+                };
+                
+                // Calculate hours and labor cost for this shift
+                const hoursWorked = shift.minutesWorked / 60;
+                const laborCost = hoursWorked * shift.payRate;
+                
+                // Add calculated fields to shift
+                shift.hoursWorked = Math.round(hoursWorked * 100) / 100;
+                shift.laborCost = Math.round(laborCost * 100) / 100;
+                shift.shiftDate = businessDate;
+                shift.locationId = 'parsed';
+                shift.position = `JobId-${shift.jobId}`;
+                shift.employeeName = `Employee-${shift.employeeId}`;
+                shift.clockIn = shift.startTime;
+                shift.clockOut = shift.endTime;
+                
+                shifts.push(shift);
+                totalHours += hoursWorked;
+                totalLaborCost += laborCost;
+                
+                context.log(`✅ Shift: Employee ${shift.employeeId}, ${hoursWorked.toFixed(2)} hrs @ $${shift.payRate}/hr = $${laborCost.toFixed(2)}`);
+            });
+        }
+        
+        const result = {
+            shifts,
             businessDate,
-            shifts: [], // TODO: Parse individual shifts if available
-            laborHours: parseFloat(totalLaborHours || '0'),
-            laborCost: parseFloat(totalLaborCost || '0'),
+            totalShifts: shifts.length,
+            totalHours: Math.round(totalHours * 100) / 100,
+            totalLaborCost: Math.round(totalLaborCost * 100) / 100,
             retrievedAt: new Date().toISOString()
         };
+        
+        context.log(`📋 Parsed ${result.totalShifts} shifts, ${result.totalHours} hours, $${result.totalLaborCost} total labor cost`);
+        return result;
+        
     } catch (error) {
         context.log('❌ Error parsing PAR Brink labor XML:', error);
         // Return empty labor data on parse error
         return {
             businessDate,
             shifts: [],
-            laborHours: 0,
-            laborCost: 0,
+            totalShifts: 0,
+            totalHours: 0,
+            totalLaborCost: 0,
             retrievedAt: new Date().toISOString()
         };
     }
@@ -1285,6 +1346,177 @@ export async function getParBrinkConfigurations(request: HttpRequest, context: I
     }
 }
 
+/**
+ * Generate comprehensive pizza restaurant overstaffing report
+ * POST /api/par-brink/overstaffing-report
+ */
+export async function getParBrinkOverstaffingReport(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+    try {
+        context.log('📊 Generating comprehensive overstaffing report');
+        
+        const requestBody = await request.text();
+        if (!requestBody) {
+            return {
+                status: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                jsonBody: { 
+                    success: false, 
+                    error: 'Request body with accessToken, locationToken, and businessDate required' 
+                }
+            };
+        }
+
+        const { accessToken, locationToken, businessDate } = JSON.parse(requestBody);
+        
+        if (!accessToken || !locationToken || !businessDate) {
+            return {
+                status: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                jsonBody: { 
+                    success: false, 
+                    error: 'accessToken, locationToken, and businessDate are all required for overstaffing report' 
+                }
+            };
+        }
+
+        // Call both APIs in parallel for efficiency
+        const [salesData, laborData] = await Promise.all([
+            callParBrinkSoapAPI('GetSales', { accessToken, locationToken, businessDate }, context),
+            callParBrinkSoapAPI('GetLaborShifts', { accessToken, locationToken, businessDate }, context)
+        ]);
+
+        // Calculate key metrics
+        const laborPercentage = salesData.totalSales > 0 ? (laborData.totalLaborCost / salesData.totalSales) * 100 : 0;
+        const salesPerHour = laborData.totalHours > 0 ? salesData.totalSales / laborData.totalHours : 0;
+        const laborCostPerHour = laborData.totalHours > 0 ? laborData.totalLaborCost / laborData.totalHours : 0;
+
+        // Industry benchmarks for pizza restaurants
+        const targetLaborPercentage = 25; // Typical pizza restaurant target: 25-30%
+        const isOverstaffed = laborPercentage > targetLaborPercentage;
+        
+        const overstaffingReport = {
+            locationId: locationToken,
+            businessDate,
+            reportGeneratedAt: new Date().toISOString(),
+            
+            // Sales Summary
+            sales: {
+                totalSales: salesData.totalSales,
+                totalTransactions: salesData.totalTransactions,
+                averageTicket: salesData.averageTicket,
+                salesPerHour: Math.round(salesPerHour * 100) / 100
+            },
+            
+            // Labor Summary
+            labor: {
+                totalShifts: laborData.totalShifts,
+                totalHours: laborData.totalHours,
+                totalLaborCost: laborData.totalLaborCost,
+                laborCostPerHour: Math.round(laborCostPerHour * 100) / 100,
+                shifts: laborData.shifts
+            },
+            
+            // Key Performance Indicators
+            kpis: {
+                laborPercentage: Math.round(laborPercentage * 100) / 100,
+                targetLaborPercentage,
+                varianceFromTarget: Math.round((laborPercentage - targetLaborPercentage) * 100) / 100,
+                isOverstaffed,
+                overstaffingAmount: isOverstaffed ? Math.round((laborData.totalLaborCost - (salesData.totalSales * targetLaborPercentage / 100)) * 100) / 100 : 0
+            },
+            
+            // Recommendations
+            recommendations: generateOverstaffingRecommendations(laborPercentage, targetLaborPercentage, laborData.shifts),
+            
+            // Detailed Analysis
+            analysis: {
+                status: isOverstaffed ? 'OVERSTAFFED' : 'OPTIMAL',
+                severity: calculateOverstaffingSeverity(laborPercentage, targetLaborPercentage),
+                potentialSavings: isOverstaffed ? Math.round((laborData.totalLaborCost - (salesData.totalSales * targetLaborPercentage / 100)) * 100) / 100 : 0
+            }
+        };
+
+        return {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            jsonBody: {
+                success: true,
+                data: overstaffingReport,
+                details: [
+                    `Labor percentage: ${overstaffingReport.kpis.laborPercentage}%`,
+                    `Status: ${overstaffingReport.analysis.status}`,
+                    `Potential daily savings: $${overstaffingReport.analysis.potentialSavings}`
+                ]
+            }
+        };
+        
+    } catch (error) {
+        context.error('❌ Error generating overstaffing report:', error);
+        return {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            jsonBody: {
+                success: false,
+                error: 'Failed to generate overstaffing report',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            }
+        };
+    }
+}
+
+/**
+ * Generate overstaffing recommendations based on labor analysis
+ */
+function generateOverstaffingRecommendations(laborPercentage: number, targetPercentage: number, shifts: any[]): string[] {
+    const recommendations: string[] = [];
+    
+    if (laborPercentage <= targetPercentage) {
+        recommendations.push('✅ Labor percentage is within optimal range');
+        recommendations.push('💡 Monitor throughout the day to maintain efficiency');
+    } else {
+        const overage = laborPercentage - targetPercentage;
+        
+        if (overage > 10) {
+            recommendations.push('🚨 CRITICAL: Labor percentage significantly over target');
+            recommendations.push('⚡ IMMEDIATE ACTION: Consider sending staff home early');
+        } else if (overage > 5) {
+            recommendations.push('⚠️ WARNING: Labor percentage moderately over target');
+            recommendations.push('📋 SUGGESTED: Review scheduled shifts for remainder of day');
+        } else {
+            recommendations.push('💛 CAUTION: Labor percentage slightly over target');
+            recommendations.push('👀 MONITOR: Watch sales trends and adjust if needed');
+        }
+        
+        // Position-specific recommendations
+        const positionCounts = shifts.reduce((counts: any, shift: any) => {
+            counts[shift.position] = (counts[shift.position] || 0) + 1;
+            return counts;
+        }, {});
+        
+        const highestCount = Math.max(...Object.values(positionCounts) as number[]);
+        const mostStaffedPosition = Object.keys(positionCounts).find(pos => positionCounts[pos] === highestCount);
+        
+        if (mostStaffedPosition && highestCount > 3) {
+            recommendations.push(`📊 Consider reducing ${mostStaffedPosition} staff (currently ${highestCount} scheduled)`);
+        }
+    }
+    
+    return recommendations;
+}
+
+/**
+ * Calculate overstaffing severity level
+ */
+function calculateOverstaffingSeverity(laborPercentage: number, targetPercentage: number): string {
+    const variance = laborPercentage - targetPercentage;
+    
+    if (variance <= 0) return 'OPTIMAL';
+    if (variance <= 2) return 'MINOR';
+    if (variance <= 5) return 'MODERATE';
+    if (variance <= 10) return 'SIGNIFICANT';
+    return 'CRITICAL';
+}
+
 // Register the enhanced Azure Functions
 app.http('createThirdPartyAPIEnhanced', {
     methods: ['POST', 'OPTIONS'],
@@ -1319,6 +1551,13 @@ app.http('getParBrinkSales', {
     authLevel: 'anonymous',
     route: 'par-brink/sales',
     handler: getParBrinkSales,
+});
+
+app.http('getParBrinkOverstaffingReport', {
+    methods: ['POST', 'OPTIONS'],
+    authLevel: 'anonymous',
+    route: 'par-brink/overstaffing-report',
+    handler: getParBrinkOverstaffingReport,
 });
 
 // Removed - using dedicated parBrinkConfigurations.ts function instead

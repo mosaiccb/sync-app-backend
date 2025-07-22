@@ -201,7 +201,7 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
       'AccessToken': accessToken,
       'LocationToken': locationToken,
       'Content-Type': 'text/xml',
-      'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/GetOrders'
+      'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/getOrders'
     };
 
     // Convert to Mountain Time format
