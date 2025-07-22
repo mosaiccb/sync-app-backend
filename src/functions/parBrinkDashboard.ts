@@ -66,6 +66,126 @@ interface DashboardResponse {
   totalLaborHours: number;
   laborPercentage: number;
   overallGuestAverage: number;
+  currentLocalTime: string;
+  currentHour: string;
+  timezone: string;
+  locationState: string;
+  locationRegion: string;
+}
+
+interface LocationConfigDashboard {
+  id: string;
+  name: string;
+  timezone: string;
+  state: string;
+  region?: string;
+}
+
+/**
+ * Get current time in specified timezone for dashboard
+ */
+function getCurrentTimeInLocationTimezone(timezone: string = 'America/Denver', includeTime: boolean = false): string {
+  const now = new Date();
+  const localTime = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+  
+  if (includeTime) {
+    return localTime.toISOString().slice(0, 19);
+  }
+  
+  return localTime.toISOString().slice(0, 10);
+}
+
+/**
+ * Get timezone offset in minutes for PAR Brink API calls
+ */
+function getLocationTimezoneOffsetMinutes(timezone: string = 'America/Denver'): number {
+  const now = new Date();
+  const utcTime = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+  const localTime = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+  
+  // Calculate offset in minutes
+  const offsetMs = localTime.getTime() - utcTime.getTime();
+  return Math.round(offsetMs / (1000 * 60));
+}
+
+/**
+ * Enhanced location mapping with timezone support for multi-state expansion
+ */
+function getEnhancedLocationMappingForDashboard(): { [token: string]: LocationConfigDashboard } {
+  return {
+    // Colorado locations (Mountain Time)
+    "RPNrrDYtnke+OHNLfy74/A==": { 
+      id: "109", name: "Castle Rock", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "16U5e0+GFEW/ixlKo+VJhg==": { 
+      id: "159", name: "Centre", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "xQwecGX8lUGnpLlTbheuug==": { 
+      id: "651", name: "Creekwalk", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "BhFEGI1ffUi1CLVe8/qtKw==": { 
+      id: "479", name: "Crown Point", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "XbEjtd0tKkavxcJ043UsUg==": { 
+      id: "204133", name: "Diamond Circle", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "kRRYZ8SCiUatilX4KO7dBg==": { 
+      id: "20408", name: "Dublin Commons", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "dWQm28UaeEq0qStmvTfACg==": { 
+      id: "67", name: "Falcon Landing", timezone: "America/Denver", state: "CO", region: "Colorado Springs Area" 
+    },
+    "Q58QIT+t+kGf9tzqHN2OCA==": { 
+      id: "188", name: "Forest Trace", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "2LUEj0hnMk+kCQlUcySYBQ==": { 
+      id: "354", name: "Greeley", timezone: "America/Denver", state: "CO", region: "Northern Colorado" 
+    },
+    "x/S/SDwyrEem54+ZoCILeg==": { 
+      id: "204049", name: "Highlands Ranch", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "gAAbGt6udki8DwPMkonciA==": { 
+      id: "722", name: "Johnstown", timezone: "America/Denver", state: "CO", region: "Northern Colorado" 
+    },
+    "37CE8WDS8k6isMGLMB9PRA==": { 
+      id: "619", name: "Lowry", timezone: "America/Denver", state: "CO", region: "Denver Metro" 
+    },
+    "7yC7X4KjZEuoZCDviTwspA==": { 
+      id: "161", name: "McCastlin Marketplace", timezone: "America/Denver", state: "CO", region: "Boulder County" 
+    },
+    "SUsjq0mEck6HwRkd7uNACg==": { 
+      id: "336", name: "Northfield Commons", timezone: "America/Denver", state: "CO", region: "Denver Metro" 
+    },
+    "M4X3DyDrLUKwi3CQHbqlOQ==": { 
+      id: "1036", name: "Polaris Pointe", timezone: "America/Denver", state: "CO", region: "Colorado Springs Area" 
+    },
+    "38AZmQGFQEy5VNajl9utlA==": { 
+      id: "26", name: "Park Meadows", timezone: "America/Denver", state: "CO", region: "Colorado Front Range" 
+    },
+    "ZOJMZlffDEqC849w6PnF0g==": { 
+      id: "441", name: "Ralston Creek", timezone: "America/Denver", state: "CO", region: "Jefferson County" 
+    },
+    "A2dHEwIh9USNnpMrXCrpQw==": { 
+      id: "601", name: "Sheridan Parkway", timezone: "America/Denver", state: "CO", region: "Denver Metro" 
+    },
+    "y4xlWfqFJEuvmkocDGZGtw==": { 
+      id: "204047", name: "South Academy Highlands", timezone: "America/Denver", state: "CO", region: "Colorado Springs Area" 
+    },
+    "6OwU+/7IOka+PV9JzAgzYQ==": { 
+      id: "579", name: "Tower", timezone: "America/Denver", state: "CO", region: "Denver Metro" 
+    },
+    "YUn21EMuwki+goWuIJ5yGg==": { 
+      id: "652", name: "Wellington", timezone: "America/Denver", state: "CO", region: "Northern Colorado" 
+    },
+    "OpM9o1kTOkyMM2vevMMqdw==": { 
+      id: "202794", name: "Westminster Promenade", timezone: "America/Denver", state: "CO", region: "Westminster/Broomfield" 
+    }
+    
+    // Future expansion examples:
+    // "TEXAS_TOKEN_1": { id: "TX001", name: "Austin Central", timezone: "America/Chicago", state: "TX", region: "Austin Metro" },
+    // "CALIFORNIA_TOKEN_1": { id: "CA001", name: "San Diego", timezone: "America/Los_Angeles", state: "CA", region: "Southern California" },
+    // "ARIZONA_TOKEN_1": { id: "AZ001", name: "Phoenix", timezone: "America/Phoenix", state: "AZ", region: "Phoenix Metro" }
+  };
 }
 
 /**
@@ -107,8 +227,8 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
       };
     }
 
-    // Get location name from token (using the same mapping as PowerShell script)
-    const locationMapping = getLocationMapping();
+    // Get location name from enhanced mapping with timezone support  
+    const locationMapping = getEnhancedLocationMappingForDashboard();
     const locationInfo = locationMapping[locationToken];
     
     if (!locationInfo) {
@@ -125,13 +245,14 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
       };
     }
 
-    // Use current date if not specified
-    const targetDate = businessDate || getCurrentMountainTime();
+    // Use location-specific timezone instead of hardcoded Mountain Time
+    const locationTimezone = locationInfo.timezone;
+    const targetDate = businessDate || getCurrentTimeInLocationTimezone(locationTimezone);
     
-    context.log(`Fetching data for location: ${locationInfo.name} on date: ${targetDate}`);
+    context.log(`Fetching data for location: ${locationInfo.name} (${locationInfo.state}, ${locationTimezone}) on date: ${targetDate}`);
 
-    // Fetch sales data
-    const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, context);
+    // Fetch sales data with timezone awareness
+    const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, context, locationTimezone);
     
     // Fetch labor data (placeholder - would need to integrate with UKG or other labor system)
     const laborData = await fetchLaborData(locationInfo.id, targetDate, context);
@@ -150,6 +271,11 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     const laborPercentage = totalSales > 0 ? (totalLaborCost / totalSales) * 100 : 0;
     const overallGuestAverage = totalGuests > 0 ? totalSales / totalGuests : 0;
 
+    // Get current local time information for highlighting current hour
+    const currentLocalTime = getCurrentTimeInLocationTimezone(locationTimezone, true);
+    const currentLocalDate = new Date(currentLocalTime);
+    const currentHour = `${currentLocalDate.getHours().toString().padStart(2, '0')}:00`;
+
     const dashboardData: DashboardResponse = {
       location: locationInfo.name,
       locationId: locationInfo.id,
@@ -162,7 +288,12 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
       totalLaborCost,
       totalLaborHours,
       laborPercentage,
-      overallGuestAverage
+      overallGuestAverage,
+      currentLocalTime,
+      currentHour,
+      timezone: locationTimezone,
+      locationState: locationInfo.state,
+      locationRegion: locationInfo.region || 'Unknown Region'
     };
 
     return {
@@ -194,7 +325,7 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
   }
 }
 
-async function fetchParBrinkSalesData(accessToken: string, locationToken: string, businessDate: string, context: InvocationContext): Promise<SalesOrder[]> {
+async function fetchParBrinkSalesData(accessToken: string, locationToken: string, businessDate: string, context: InvocationContext, locationTimezone: string = 'America/Denver'): Promise<SalesOrder[]> {
   try {
     const headers = {
       'AccessToken': accessToken,
@@ -205,9 +336,10 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
       'Accept': 'text/xml, application/soap+xml, application/xml'
     };
 
-    // Convert to Mountain Time format
-    const mtDate = convertToMountainTime(businessDate);
-    const mtNow = getCurrentMountainTime(true);
+    // Convert to location-specific timezone format instead of hardcoded Mountain Time
+    const localDate = convertToLocationTimezone(businessDate, locationTimezone);
+    const localNow = getCurrentTimeInLocationTimezone(locationTimezone, true);
+    const timezoneOffset = getLocationTimezoneOffsetMinutes(locationTimezone);
 
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -215,10 +347,10 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
         <soapenv:Body>
           <v2:GetOrders>
             <v2:request>
-              <v2:BusinessDate>${mtDate}</v2:BusinessDate>
+              <v2:BusinessDate>${localDate}</v2:BusinessDate>
               <v2:ModifiedTime>
-                <sys:DateTime>${mtNow}</sys:DateTime>
-                <sys:OffsetMinutes>-420</sys:OffsetMinutes>
+                <sys:DateTime>${localNow}</sys:DateTime>
+                <sys:OffsetMinutes>${timezoneOffset}</sys:OffsetMinutes>
               </v2:ModifiedTime>
             </v2:request>
           </v2:GetOrders>
@@ -226,7 +358,9 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
       </soapenv:Envelope>
     `;
 
-    context.log('Making PAR Brink API call...');
+    context.log(`Making timezone-aware PAR Brink API call for ${locationTimezone}...`);
+    context.log(`Business Date: ${businessDate} -> ${localDate} (${locationTimezone})`);
+    context.log(`Modified Time: ${localNow} (Offset: ${timezoneOffset} mins)`);
     
     const response = await fetch('https://api11.brinkpos.net/sales2.svc', {
       method: 'POST',
@@ -245,13 +379,22 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     const xmlData = await response.text();
     const orders = parseOrdersFromXML(xmlData);
     
-    context.log(`Retrieved ${orders.length} orders from PAR Brink`);
+    context.log(`Retrieved ${orders.length} orders from PAR Brink (${locationTimezone})`);
     return orders;
 
   } catch (error) {
-    context.error('Error fetching PAR Brink sales data:', error);
+    context.error('Error fetching timezone-aware PAR Brink sales data:', error);
     return [];
   }
+}
+
+/**
+ * Convert date to location-specific timezone
+ */
+function convertToLocationTimezone(dateString: string, timezone: string = 'America/Denver'): string {
+  const date = new Date(dateString);
+  const localTime = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
+  return localTime.toISOString().slice(0, 10);
 }
 
 async function fetchLaborData(locationId: string, businessDate: string, context: InvocationContext): Promise<PunchDetail[]> {
