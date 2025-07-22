@@ -1780,6 +1780,7 @@ export async function getParBrinkLaborHourDetail(request: HttpRequest, context: 
             location: {
                 id: locationInfo?.id || locationToken,
                 name: locationInfo?.name || 'Unknown Location',
+                displayName: `${locationInfo?.name || 'Unknown Location'} (${locationInfo?.timezone || 'America/Denver'})`,
                 timezone: locationInfo?.timezone || 'America/Denver',
                 state: locationInfo?.state || 'Unknown State'
             },
@@ -1813,7 +1814,7 @@ export async function getParBrinkLaborHourDetail(request: HttpRequest, context: 
                 data: hourDetail,
                 details: [
                     `📅 Hour detail for ${businessDate} at ${hourNum}:00`,
-                    `📍 Location: ${locationInfo?.name || 'Unknown'} (${locationInfo?.state || 'Unknown'})`,
+                    `📍 Location: ${locationInfo?.name || 'Unknown'} (${locationInfo?.timezone || 'America/Denver'}) - ${locationInfo?.state || 'Unknown'}`,
                     `👥 ${activeShifts.length} employees on duty`,
                     `🎯 Positions: ${Object.entries(employeesByPosition).map(([pos, count]) => `${count} ${pos}`).join(', ')}`,
                     `✅ Data validation complete for hour block`
