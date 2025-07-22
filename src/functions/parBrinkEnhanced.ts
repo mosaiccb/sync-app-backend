@@ -1163,15 +1163,6 @@ function getCurrentTimeInTimezone(timezone: string = 'America/Denver', includeTi
 }
 
 /**
- * Convert date to specified timezone
- */
-function convertToTimezone(dateString: string, timezone: string = 'America/Denver'): string {
-    const date = new Date(dateString);
-    const localTime = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
-    return localTime.toISOString().slice(0, 10);
-}
-
-/**
  * Get timezone offset in minutes for PAR Brink API calls
  */
 function getTimezoneOffsetMinutes(timezone: string = 'America/Denver'): number {
@@ -1681,7 +1672,7 @@ export async function getParBrinkConfigurations(request: HttpRequest, context: I
  * Get all locations with timezone information for multi-state expansion
  * GET /api/par-brink/locations-with-timezones
  */
-export async function getLocationsWithTimezones(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+export async function getLocationsWithTimezones(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     try {
         context.log('🌍 Fetching locations with timezone configuration for multi-state expansion');
         
