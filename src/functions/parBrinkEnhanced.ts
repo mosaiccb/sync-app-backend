@@ -727,17 +727,28 @@ async function callRealParBrinkSales(
     context: InvocationContext
 ): Promise<any> {
     const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sal="http://www.brinksoftware.com/webservices/sales/v2">
-        <soap:Header />
-        <soap:Body>
-            <sal:GetOrders>
-                <sal:businessDate>${businessDate}</sal:businessDate>
-            </sal:GetOrders>
-        </soap:Body>
-    </soap:Envelope>`;
+    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
+        <soapenv:Header/>
+        <soapenv:Body>
+            <v2:GetOrders>
+                <v2:request>
+                    <v2:BusinessDate>${businessDate}</v2:BusinessDate>
+                    <v2:ModifiedTime>
+                        <sys:DateTime>${businessDate}T21:13:42</sys:DateTime>
+                        <sys:OffsetMinutes>-420</sys:OffsetMinutes>
+                    </v2:ModifiedTime>
+                </v2:request>
+            </v2:GetOrders>
+        </soapenv:Body>
+    </soapenv:Envelope>`;
 
     try {
-        const response = await fetch('https://api11.brinkpos.net/Sales2.svc', {
+        context.log('📞 Calling PAR Brink sales2.svc with GetOrders...');
+        context.log(`🗓️ Business Date: ${businessDate}`);
+        context.log(`🔑 AccessToken: ${accessToken.substring(0, 10)}...`);
+        context.log(`📍 LocationToken: ${locationToken.substring(0, 10)}...`);
+        
+        const response = await fetch('https://api11.brinkpos.net/sales2.svc', {
             method: 'POST',
             headers: {
                 'AccessToken': accessToken,
@@ -748,7 +759,12 @@ async function callRealParBrinkSales(
             body: soapEnvelope
         });
 
+        context.log(`📊 PAR Brink response status: ${response.status}`);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            context.error(`❌ PAR Brink Sales API error: ${response.status} ${response.statusText}`);
+            context.error(`❌ Error response: ${errorText}`);
             throw new Error(`PAR Brink API request failed: ${response.status} ${response.statusText}`);
         }
 
