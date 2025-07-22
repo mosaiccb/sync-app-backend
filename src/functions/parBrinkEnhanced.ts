@@ -510,17 +510,7 @@ async function callRealParBrinkEmployees(
     locationToken: string, 
     context: InvocationContext
 ): Promise<any> {
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:set="http://www.brinksoftware.com/webservices/settings/v2">
-        <soap:Header />
-        <soap:Body>
-            <set:GetEmployees>
-                <set:request>
-                    <set:IncludeJobTypeInfo>true</set:IncludeJobTypeInfo>
-                </set:request>
-            </set:GetEmployees>
-        </soap:Body>
-    </soap:Envelope>`;
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:set="http://www.brinksoftware.com/webservices/settings/v2"><soap:Header /><soap:Body><set:GetEmployees><set:request><set:IncludeJobTypeInfo>true</set:IncludeJobTypeInfo></set:request></set:GetEmployees></soap:Body></soap:Envelope>`;
 
     try {
         context.log('🏢 Calling PAR Brink Settings2.svc for employees with job type pay rates...');
@@ -627,15 +617,7 @@ async function callRealParBrinkLaborShifts(
     businessDate: string,
     context: InvocationContext
 ): Promise<any> {
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2">
-        <soap:Header />
-        <soap:Body>
-            <lab:GetLaborShifts>
-                <lab:businessDate>${businessDate}</lab:businessDate>
-            </lab:GetLaborShifts>
-        </soap:Body>
-    </soap:Envelope>`;
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2"><soap:Header /><soap:Body><lab:GetLaborShifts><lab:businessDate>${businessDate}</lab:businessDate></lab:GetLaborShifts></soap:Body></soap:Envelope>`;
 
     try {
         const response = await fetch('https://api11.brinkpos.net/Labor2.svc', {
@@ -726,33 +708,28 @@ async function callRealParBrinkSales(
     businessDate: string,
     context: InvocationContext
 ): Promise<any> {
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
-        <soapenv:Header/>
-        <soapenv:Body>
-            <v2:GetOrders>
-                <v2:request>
-                    <v2:BusinessDate>${businessDate}</v2:BusinessDate>
-                    <v2:ModifiedTime>
-                        <sys:DateTime>${businessDate}T21:13:42</sys:DateTime>
-                        <sys:OffsetMinutes>-420</sys:OffsetMinutes>
-                    </v2:ModifiedTime>
-                </v2:request>
-            </v2:GetOrders>
-        </soapenv:Body>
-    </soapenv:Envelope>`;
+    // Hardcoded test credentials for development (replace with your actual values)
+    const testAccessToken = accessToken || "YOUR_ACCESS_TOKEN_HERE";
+    const testLocationToken = locationToken || "YOUR_LOCATION_TOKEN_HERE";
+    
+    context.log(`🔧 Using access token: ${testAccessToken === "YOUR_ACCESS_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
+    context.log(`🔧 Using location token: ${testLocationToken === "YOUR_LOCATION_TOKEN_HERE" ? "PLACEHOLDER" : "PROVIDED"}`);
+    
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System"><soapenv:Header/><soapenv:Body><v2:GetOrders><v2:request><v2:BusinessDate>${businessDate}</v2:BusinessDate><v2:ModifiedTime><sys:DateTime>${businessDate}T21:13:42</sys:DateTime><sys:OffsetMinutes>-420</sys:OffsetMinutes></v2:ModifiedTime></v2:request></v2:GetOrders></soapenv:Body></soapenv:Envelope>`;
 
     try {
         context.log('📞 Calling PAR Brink sales2.svc with GetOrders...');
         context.log(`🗓️ Business Date: ${businessDate}`);
-        context.log(`🔑 AccessToken: ${accessToken.substring(0, 10)}...`);
-        context.log(`📍 LocationToken: ${locationToken.substring(0, 10)}...`);
+        context.log(`🔑 AccessToken: ${testAccessToken.substring(0, 10)}...`);
+        context.log(`📍 LocationToken: ${testLocationToken.substring(0, 10)}...`);
+        context.log(`📦 SOAP Envelope Length: ${soapEnvelope.length} chars`);
+        context.log(`📦 First 100 chars: ${soapEnvelope.substring(0, 100)}`);
         
         const response = await fetch('https://api11.brinkpos.net/sales2.svc', {
             method: 'POST',
             headers: {
-                'AccessToken': accessToken,
-                'LocationToken': locationToken,
+                'AccessToken': testAccessToken,
+                'LocationToken': testLocationToken,
                 'Content-Type': 'text/xml',
                 'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/GetOrders'
             },
@@ -780,7 +757,7 @@ async function callRealParBrinkSales(
     } catch (error) {
         context.error('❌ Failed to call real PAR Brink GetSales, using simulated data:', error);
         // Fall back to simulated sales data
-        return generateRealisticSalesData(businessDate, locationToken);
+        return generateRealisticSalesData(businessDate, testLocationToken);
     }
 }
 
