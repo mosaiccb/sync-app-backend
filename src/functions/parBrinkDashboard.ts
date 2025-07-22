@@ -1,5 +1,4 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import axios from 'axios';
 
 interface SalesOrderEntry {
   ItemId: string;
@@ -200,8 +199,10 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     const headers = {
       'AccessToken': accessToken,
       'LocationToken': locationToken,
-      'Content-Type': 'text/xml',
-      'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/getOrders'
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/GetOrders',
+      'User-Agent': 'UKG-Sync-App/1.0',
+      'Accept': 'text/xml, application/soap+xml, application/xml'
     };
 
     // Convert to Mountain Time format
@@ -227,10 +228,21 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
 
     context.log('Making PAR Brink API call...');
     
-    const response = await axios.post('https://api11.brinkpos.net/sales2.svc', soapBody, { headers });
+    const response = await fetch('https://api11.brinkpos.net/sales2.svc', {
+      method: 'POST',
+      headers: headers,
+      body: soapBody
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      context.error(`❌ PAR Brink Sales API error: ${response.status} ${response.statusText}`);
+      context.error(`❌ Error response: ${errorText}`);
+      throw new Error(`PAR Brink API request failed: ${response.status} ${response.statusText}`);
+    }
     
     // Parse XML response
-    const xmlData = response.data;
+    const xmlData = await response.text();
     const orders = parseOrdersFromXML(xmlData);
     
     context.log(`Retrieved ${orders.length} orders from PAR Brink`);
