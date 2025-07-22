@@ -1,0 +1,16 @@
+{
+  "name": "deploy-backend",
+  "version": "1.0.0",
+  "description": "Deployment scripts for Azure Functions backend",
+  "scripts": {
+    "deploy": "node deploy.js",
+    "deploy:verbose": "node deploy.js --verbose",
+    "deploy:skip-build": "node deploy.js --skip-build",
+    "deploy:powershell": "powershell -ExecutionPolicy Bypass -File deploy.ps1",
+    "deploy:bash": "bash deploy.sh",
+    "quick-deploy": "npm run build && node deploy.js"
+  },
+  "devDependencies": {
+    "archiver": "^6.0.1"
+  }
+}
