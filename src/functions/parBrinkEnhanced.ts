@@ -419,7 +419,13 @@ export async function getParBrinkLaborShifts(request: HttpRequest, context: Invo
 
         return {
             status: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            },
             jsonBody: {
                 success: true,
                 data: laborData,
@@ -429,7 +435,8 @@ export async function getParBrinkLaborShifts(request: HttpRequest, context: Invo
                     `Shifts found: ${laborData?.shifts?.length || 0}`,
                     `Total hours: ${laborData?.totalHours || 0}`,
                     `Total labor cost: $${laborData?.totalLaborCost || 0}`,
-                    `Real PAR Brink data: ${laborData.shifts.length > 0 ? 'YES' : 'NO (using simulated)'}`
+                    `Real PAR Brink data: ${laborData.shifts.length > 0 ? 'YES' : 'NO (using simulated)'}`,
+                    `Timestamp: ${new Date().toISOString()}`
                 ]
             }
         };
@@ -503,7 +510,13 @@ export async function getParBrinkSales(request: HttpRequest, context: Invocation
 
         return {
             status: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            },
             jsonBody: {
                 success: true,
                 data: salesData,
@@ -513,7 +526,8 @@ export async function getParBrinkSales(request: HttpRequest, context: Invocation
                     `Total Sales: $${salesData?.totalSales?.toFixed(2) || '0.00'}`,
                     `Total Transactions: ${salesData?.totalTransactions || 0}`,
                     `Average Ticket: $${salesData?.averageTicket?.toFixed(2) || '0.00'}`,
-                    `Real PAR Brink data: ${salesData.totalSales > 0 ? 'YES' : 'NO (using simulated)'}`
+                    `Real PAR Brink data: ${salesData.totalSales > 0 ? 'YES' : 'NO (using simulated)'}`,
+                    `Timestamp: ${new Date().toISOString()}`
                 ]
             }
         };
@@ -1844,7 +1858,13 @@ export async function getParBrinkLaborHourDetail(request: HttpRequest, context: 
 
         return {
             status: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            },
             jsonBody: {
                 success: true,
                 data: hourDetail,
@@ -1853,7 +1873,8 @@ export async function getParBrinkLaborHourDetail(request: HttpRequest, context: 
                     `📍 Location: ${locationInfo?.name || 'Unknown'} (${locationInfo?.timezone || 'America/Denver'}) - ${locationInfo?.state || 'Unknown'}`,
                     `👥 ${activeShifts.length} employees on duty`,
                     `🎯 Positions: ${Object.entries(employeesByPosition).map(([pos, count]) => `${count} ${pos}`).join(', ')}`,
-                    `✅ Data validation complete for hour block`
+                    `✅ Data validation complete for hour block`,
+                    `🔄 Fresh data retrieved at: ${new Date().toISOString()}`
                 ]
             }
         };
