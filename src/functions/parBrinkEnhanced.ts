@@ -2,12 +2,12 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { KeyVaultService } from '../services/keyVaultService';
 // import { ThirdPartyAPIDatabase } from '../services/ThirdPartyAPIDatabase';
 
-// PAR Brink rate limiting constants following best practices
+// PAR Brink rate limiting constants - REDUCED for development/testing
 const PAR_BRINK_RATE_LIMITS = {
-    MULTI_TENANT_CONCURRENT_CALLS: 5,
-    MULTI_TENANT_SLEEP_MS: 2 * 60 * 1000, // 2-3 minutes
-    SINGLE_TENANT_CONCURRENT_CALLS: 10,
-    SINGLE_TENANT_SLEEP_MS: 1 * 60 * 1000, // 1+ minute
+    MULTI_TENANT_CONCURRENT_CALLS: 10,
+    MULTI_TENANT_SLEEP_MS: 1000, // 1 second instead of 2 minutes
+    SINGLE_TENANT_CONCURRENT_CALLS: 15,
+    SINGLE_TENANT_SLEEP_MS: 500, // 0.5 seconds instead of 1 minute
     MAX_LOCATIONS_PER_BATCH: 500 // PAR Brink best practice limit
 };
 
@@ -16,9 +16,17 @@ let lastApiCallTime = 0;
 let currentConcurrentCalls = 0;
 
 /**
- * Implement PAR Brink rate limiting following official best practices
+ * Implement PAR Brink rate limiting - DISABLED for development/testing
  */
 async function enforceParBrinkRateLimit(context: InvocationContext): Promise<void> {
+    // Rate limiting disabled for faster development and testing
+    // In production, uncomment the rate limiting logic below if needed
+    context.log(`⚡ Rate limiting bypassed for development - immediate API call`);
+    currentConcurrentCalls++;
+    lastApiCallTime = Date.now();
+    return;
+    
+    /* PRODUCTION RATE LIMITING CODE (currently disabled):
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCallTime;
     
@@ -43,6 +51,7 @@ async function enforceParBrinkRateLimit(context: InvocationContext): Promise<voi
     
     currentConcurrentCalls++;
     lastApiCallTime = Date.now();
+    */
 }
 
 /**
