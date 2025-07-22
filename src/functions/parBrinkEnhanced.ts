@@ -630,7 +630,7 @@ async function callRealParBrinkLaborShifts(
                 'AccessToken': accessToken,
                 'LocationToken': locationToken,
                 'Content-Type': 'text/xml',
-                'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/getShifts'
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/GetShifts'
             },
             body: soapEnvelope
         });
@@ -740,7 +740,7 @@ async function callRealParBrinkSales(
                 'AccessToken': testAccessToken,
                 'LocationToken': testLocationToken,
                 'Content-Type': 'text/xml',
-                'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/getOrders'
+                'SOAPAction': 'http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/GetOrders'
             },
             body: soapEnvelope
         });
