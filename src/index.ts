@@ -9,6 +9,7 @@ import './functions/oauth';
 import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
+import './functions/parBrinkConfigurations';
 import './functions/parBrinkToUkgETL';
 import './functions/ukgReadyAPI';
 

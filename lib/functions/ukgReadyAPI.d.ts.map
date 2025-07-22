@@ -1,1 +1,1 @@
-{"version":3,"file":"ukgReadyAPI.d.ts","sourceRoot":"","sources":["../../src/functions/ukgReadyAPI.ts"],"names":[],"mappings":""}
+{"version":3,"file":"ukgReadyAPI.d.ts","sourceRoot":"","sources":["../../src/functions/ukgReadyAPI.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,WAAW,EAAE,gBAAgB,EAAE,iBAAiB,EAAE,MAAM,kBAAkB,CAAC;AAyEzF;;;GAGG;AACH,wBAAsB,WAAW,CAAC,OAAO,EAAE,WAAW,EAAE,OAAO,EAAE,iBAAiB,GAAG,OAAO,CAAC,gBAAgB,CAAC,CAwE7G"}
