@@ -718,9 +718,10 @@ app.http('getParBrinkLaborShifts', {
     handler: getParBrinkLaborShifts,
 });
 
-app.http('getParBrinkConfigurations', {
-    methods: ['GET', 'OPTIONS'],
-    authLevel: 'anonymous',
-    route: 'par-brink/configurations',
-    handler: getParBrinkConfigurations,
-});
+// Removed - using dedicated parBrinkConfigurations.ts function instead
+// app.http('getParBrinkConfigurations', {
+//     methods: ['GET', 'OPTIONS'],
+//     authLevel: 'anonymous',
+//     route: 'par-brink/configurations',
+//     handler: getParBrinkConfigurations,
+// });
