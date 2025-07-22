@@ -3,15 +3,10 @@
 # 
 # Author: GitHub Copilot AI Assistant
 # Created: July 2025
-# Purpose: Automated deployment bypassing VS Code Git requirements
+# Purpose: Automated deployment using same method as VS Code right-click
 #
-# Unlike VS Code right-click deployment, this script DOES NOT require commits!
-# It uses Azure Functions Core Tools and Azure CLI directly, bypassing VS Code's Git requirements.
-#
-# ⚠️  IMPORTANT: GitHub Workflow Conflict
-# The GitHub workflow (.github/workflows/azure-deploy.yml) uses --build-remote
-# which automatically sets WEBSITE_RUN_FROM_PACKAGE=1. This script will override
-# that setting, but you may see "Run-From-Zip" messages until the setting propagates.
+# This script replicates VS Code right-click deployment using Kudu/git deployment
+# which is more reliable than func azure functionapp publish for complex projects.
 #
 # 🔧 Hardcoded Configuration:
 #   • Function App: ukg-sync-backend-5rrqlcuxyzlvy
@@ -19,11 +14,9 @@
 #   • Subscription: 3a09f19f-d0c3-4a11-ac2c-6d869a76ec94
 #
 # Usage Examples:
-#   .\deploy.ps1                                        # Basic deployment with hardcoded settings
-#   .\deploy.ps1 -AutoCommit                           # Auto-commit with tracking message
+#   .\deploy.ps1                                        # Basic deployment (will auto-commit)
+#   .\deploy.ps1 -CommitMessage "Fix API endpoint"      # Custom commit message
 #   .\deploy.ps1 -SkipBuild                            # Skip npm build step
-#   .\deploy.ps1 -EnableRunFromPackage                 # Enable server-side build for ZIP deployment
-#   .\deploy.ps1 -AutoCommit -CommitMessage "Fix API"  # Custom commit message
 #   .\deploy.ps1 -VerboseOutput                        # Verbose output
 #   .\deploy.ps1 -FunctionAppName "other-app"          # Override function app name
 
@@ -44,13 +37,7 @@ param(
     [switch]$VerboseOutput,
     
     [Parameter(Mandatory = $false)]
-    [switch]$AutoCommit,
-    
-    [Parameter(Mandatory = $false)]
-    [string]$CommitMessage = "🚀 Auto-deploy: Azure Functions update via PowerShell script",
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$EnableRunFromPackage
+    [string]$CommitMessage = "🚀 PowerShell deployment: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 )
 
 Write-Host "🚀 Starting Azure Functions Deployment" -ForegroundColor Green
@@ -196,63 +183,61 @@ catch {
 
 Write-Host "✅ Prerequisites check completed" -ForegroundColor Green
 
-# Check Git status (informational only - won't block deployment)
-Write-Host "`n📋 Checking Git status..." -ForegroundColor Cyan
+# Ensure changes are committed (required for git-based deployment)
+Write-Host "`n📋 Preparing Git commit for deployment..." -ForegroundColor Cyan
 
 try {
     # Check if this is a git repository
     $isGitRepo = Test-Path ".git"
-    if ($isGitRepo) {
-        # Check Git status
-        $gitStatus = git status --porcelain 2>$null
-        if ($gitStatus) {
-            Write-Host "⚠️  Uncommitted changes detected:" -ForegroundColor Yellow
-            $gitStatusLines = $gitStatus -split "`n"
-            foreach ($line in $gitStatusLines | Select-Object -First 10) {
-                if ($line.Trim()) {
-                    Write-Host "   $line" -ForegroundColor Yellow
-                }
-            }
-            if ($gitStatusLines.Count -gt 10) {
-                Write-Host "   ... and $($gitStatusLines.Count - 10) more files" -ForegroundColor Yellow
-            }
-            
-            if ($AutoCommit) {
-                Write-Host "`n� Auto-committing changes..." -ForegroundColor Cyan
-                try {
-                    git add .
-                    git commit -m "$CommitMessage"
-                    Write-Host "✅ Changes committed successfully" -ForegroundColor Green
-                }
-                catch {
-                    Write-Host "⚠️  Auto-commit failed, but deployment will continue" -ForegroundColor Yellow
-                }
-            }
-            else {
-                Write-Host "�� No worries! This deployment will work WITHOUT commits!" -ForegroundColor Green
-                Write-Host "💡 Unlike VS Code right-click, this script bypasses Git requirements" -ForegroundColor Cyan
-                Write-Host "💡 Use -AutoCommit to automatically commit changes before deployment" -ForegroundColor DarkGray
+    if (-not $isGitRepo) {
+        Write-Host "❌ Not a Git repository. Git-based deployment requires a .git folder." -ForegroundColor Red
+        Write-Host "💡 Initialize with: git init" -ForegroundColor Cyan
+        exit 1
+    }
+    
+    # Check Git status
+    $gitStatus = git status --porcelain 2>$null
+    if ($gitStatus) {
+        Write-Host "📝 Committing changes for deployment..." -ForegroundColor Yellow
+        $gitStatusLines = $gitStatus -split "`n"
+        foreach ($line in $gitStatusLines | Select-Object -First 5) {
+            if ($line.Trim()) {
+                Write-Host "   $line" -ForegroundColor DarkGray
             }
         }
-        else {
-            Write-Host "✅ Working directory is clean" -ForegroundColor Green
+        if ($gitStatusLines.Count -gt 5) {
+            Write-Host "   ... and $($gitStatusLines.Count - 5) more files" -ForegroundColor DarkGray
         }
         
-        # Show current branch
-        $currentBranch = git branch --show-current 2>$null
-        if ($currentBranch) {
-            Write-Host "📍 Current branch: $currentBranch" -ForegroundColor Cyan
+        try {
+            git add .
+            git commit -m "$CommitMessage"
+            Write-Host "✅ Changes committed successfully" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "❌ Failed to commit changes" -ForegroundColor Red
+            Write-Host "💡 Git deployment requires committed changes" -ForegroundColor Cyan
+            exit 1
         }
     }
     else {
-        Write-Host "📁 Not a Git repository (no .git folder found)" -ForegroundColor Yellow
+        Write-Host "✅ Working directory is clean" -ForegroundColor Green
+    }
+    
+    # Show current branch and commit
+    $currentBranch = git branch --show-current 2>$null
+    $currentCommit = git rev-parse --short HEAD 2>$null
+    if ($currentBranch -and $currentCommit) {
+        Write-Host "📍 Branch: $currentBranch" -ForegroundColor Cyan
+        Write-Host "� Commit: $currentCommit" -ForegroundColor Cyan
     }
 }
 catch {
-    Write-Host "📁 Git not available or not a repository" -ForegroundColor Yellow
+    Write-Host "❌ Git error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
 }
 
-Write-Host "✅ Git status check completed (deployment will proceed regardless)" -ForegroundColor Green
+Write-Host "✅ Git preparation completed" -ForegroundColor Green
 
 # Build the project (unless skipped)
 if (-not $SkipBuild -and -not $EnableRunFromPackage) {
