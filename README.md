@@ -1,31 +1,44 @@
-# UKG Sync Backend - Multi-Tenant Configuration Service
+# Restaurant Operations Backend - Azure Functions
 
-A robust Azure Functions backend that provides multi-tenant UKG Ready OAuth proxy and configuration management using a hybrid SQL Server + Azure Key Vault architecture.
+A robust Azure Functions backend for restaurant operations management with PAR Brink POS integration, UKG labor data, and multi-tenant restaurant location management.
 
 ## 🏗️ Architecture Overview
 
-- **SQL Server**: Stores tenant configuration, API settings, and audit logs for fast queries
-- **Azure Key Vault**: Stores only sensitive client secrets, referenced by tenant ID
-- **Azure Functions**: RESTful API endpoints for tenant management and OAuth proxy
-- **TypeScript**: Strongly typed codebase with comprehensive error handling
+- **PAR Brink Integration**: SOAP API for real-time sales data from POS systems
+- **UKG Ready OAuth**: Proxy service for labor management data
+- **Azure SQL Database**: Restaurant locations, tenant configuration, audit logs
+- **Azure Key Vault**: Secure storage for API credentials and secrets
+- **WorldTimeAPI**: Accurate timezone handling with DST support for restaurant business dates
+- **Multi-Timezone Support**: Currently Colorado (America/Denver), expandable nationwide
+
+## 🍽️ Restaurant Business Logic
+
+- **Business Day**: 5 AM to 4:59 AM next day (restaurant operational hours)
+- **Timezone Handling**: Real-time calculation with DST support via WorldTimeAPI
+- **Location Management**: 22 Colorado restaurant locations with encrypted tokens
+- **Data Integration**: Combines PAR Brink sales with UKG labor for operational dashboards
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - Azure Functions Core Tools 4.x
 - Access to Azure SQL Server: `mosaic.database.windows.net`
 - Access to Azure Key Vault: `kv-mosaic-ukg-sync`
-- Azure CLI configured with appropriate permissions
+- PAR Brink API credentials for restaurant locations
+- UKG Ready API access for labor data
 
 ## 🚀 Setup Instructions
 
 ### 1. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 2. Configure Environment
+
 Copy `local.settings.json.example` to `local.settings.json` and update:
+
 ```json
 {
   "Values": {
@@ -38,18 +51,20 @@ Copy `local.settings.json.example` to `local.settings.json` and update:
 ```
 
 ### 3. Deploy Database Schema
+
 ```bash
 npm run deploy:schema
 ```
-Follow the instructions to run `tenant-schema-fixed.sql` on your SQL Server.
 
 ### 4. Build and Test
+
 ```bash
 npm run build
 npm run test:db
 ```
 
 ### 5. Start Local Development
+
 ```bash
 npm start
 ```
@@ -61,99 +76,153 @@ npm start
 - `npm start` - Start Azure Functions runtime
 - `npm run test:db` - Test database connection
 - `npm run deploy:schema` - Show schema deployment instructions
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix linting issues
 
 ## 📊 Database Schema
 
-The system uses the following main tables:
-
 ### Tenants
-- Primary tenant configuration
-- Company details and API endpoints
-- Soft delete support
 
-### UKGApiConfigurations  
-- UKG-specific API settings
-- Token endpoints and scopes
-- Linked to tenants via foreign key
+- Restaurant location configuration
+- PAR Brink API settings and tokens
+- Geographic and timezone information
+
+### UKGApiConfigurations
+
+- UKG Ready OAuth settings
+- Labor management API configuration
+- Employee and scheduling data access
 
 ### TenantAudit
-- Complete audit trail
-- Tracks all configuration changes
-- Includes old/new values for comparison
+
+- Complete audit trail for restaurant configuration changes
+- Tracks all API setting modifications
+- Security and compliance logging
 
 ## 🔐 Security
 
-- **Secrets**: All sensitive data (client secrets) stored in Azure Key Vault
-- **Authentication**: Azure AD authentication for database access
-- **Audit**: Complete audit trail of all configuration changes
-- **Access Control**: Service-level authentication for API endpoints
+- **API Credentials**: PAR Brink and UKG credentials stored in Azure Key Vault
+- **Location Tokens**: Encrypted restaurant identification tokens
+- **Timezone Security**: WorldTimeAPI with fallback to prevent timezone manipulation
+- **Audit Trail**: Complete logging of all configuration and data access
 
 ## 📡 API Endpoints
 
-### Tenant Management
-- `GET /api/tenants` - List all tenants
-- `GET /api/tenants/{id}` - Get tenant by ID
-- `POST /api/tenants` - Create new tenant
-- `PUT /api/tenants/{id}` - Update tenant
-- `DELETE /api/tenants/{id}` - Delete tenant (soft delete)
+### Restaurant Dashboard
 
-### OAuth Proxy
-- `POST /api/oauth/token` - Generate OAuth token for tenant
+- `POST /api/par-brink/dashboard` - Real-time sales and labor dashboard
+- `GET /api/par-brink/sales` - PAR Brink sales data retrieval
+- `GET /api/par-brink/employees` - Employee management data
+- `GET /api/par-brink/labor-shifts` - Labor shift information
 
-## 🔄 Migration
+### Restaurant Management
 
-To migrate existing Key Vault data to the new SQL schema:
+- `GET /api/tenants` - List restaurant locations
+- `GET /api/tenants/{id}` - Get specific restaurant details
+- `POST /api/tenants` - Add new restaurant location
+- `PUT /api/tenants/{id}` - Update restaurant configuration
+- `DELETE /api/tenants/{id}` - Remove restaurant (soft delete)
 
-1. Update `migrate-tenants.js` with your existing tenant data
-2. Run: `node migrate-tenants.js`
+### Configuration & Integration
+
+- `GET/POST /api/par-brink/configurations` - PAR Brink API settings
+- `POST /api/oauth/token` - UKG Ready OAuth token generation
+- `GET /api/ukg-ready` - UKG API proxy for labor data
+- `GET /api/health` - System health and connectivity checks
+
+## � Timezone & Business Date Handling
+
+### WorldTimeAPI Integration
+
+- Real-time timezone data with DST support
+- Accurate offset calculation for PAR Brink API (requires integer minutes)
+- Fallback to manual calculation if API unavailable
+
+### Restaurant Business Logic
+
+```typescript
+// Business day calculation (5 AM cutoff)
+if (localTime.getHours() < 5) {
+  businessDate = previousDay; // Early morning = previous business day
+} else {
+  businessDate = currentDay; // Regular hours = current day
+}
+```
+
+### Current Restaurant Locations
+
+All 22 locations currently in Colorado (America/Denver timezone):
+
+- Castle Rock, Centre, Creekwalk, Crown Point, Diamond Circle
+- Dublin Commons, Falcon Landing, Forest Trace, Greeley
+- Highlands Ranch, Johnstown, Lowry, McCastlin Marketplace
+- Northfield Commons, Polaris Pointe, Park Meadows
+- Ralston Creek, Sheridan Parkway, South Academy Highlands
+- Tower, Wellington, Westminster Promenade
+
+## 🔄 Recent Updates
+
+### July 2025 - PAR Brink Integration Fixes
+
+- **Integer Offset Fix**: PAR Brink API requires Int32 offset values
+- **WorldTimeAPI Integration**: Accurate timezone handling with DST
+- **Business Date Logic**: Restaurant-specific 5 AM cutoff implementation
+- **Multi-Location Support**: 22 Colorado restaurants with encrypted tokens
 
 ## 🚦 Deployment
 
 ### Local Development
+
 ```bash
 npm run build
 npm start
 ```
 
 ### Azure Deployment
+
+**Recommended Method (Proven to work):**
+
+- Use VS Code Azure Functions extension
+- Right-click on `sync-app-backend` folder → "Deploy to Function App..."
+- Select your Function App and deploy
+
+**PowerShell Script:**
+
 ```bash
-func azure functionapp publish your-function-app-name
+.\deploy.ps1
 ```
+
+_Note: The deployment script uses VS Code right-click method due to compatibility issues with `func publish` and Azure Functions v4 TypeScript programming model._
+
+**Alternative (if VS Code unavailable):**
+
+```bash
+func azure functionapp publish ukg-sync-backend-5rrqlcuxyzlvy
+```
+
+_Warning: This method has known issues with TypeScript v4 programming model and may result in "0 functions found" errors._
 
 ## 📈 Monitoring
 
-- Application Insights integration
-- Structured logging with correlation IDs
-- Performance metrics and error tracking
-- Health check endpoints
+- Application Insights for restaurant operations monitoring
+- PAR Brink API health checks and error tracking
+- UKG OAuth token management and renewal
+- WorldTimeAPI failover and timezone accuracy monitoring
 
 ## 🔍 Troubleshooting
 
+### PAR Brink API Issues
+
+- Verify location tokens are valid and not expired
+- Check timezone offset calculation (must be integer)
+- Ensure business date follows restaurant logic (5 AM cutoff)
+
 ### Database Connection Issues
-- Verify Azure AD authentication is configured
-- Check firewall rules for SQL Server
-- Ensure database permissions are granted
 
-### Key Vault Access Issues
-- Verify managed identity has Key Vault access
-- Check Key Vault access policies
-- Ensure correct Key Vault URL in configuration
+- Verify Azure AD authentication for SQL Server
+- Check restaurant location data integrity
+- Ensure audit logging is functioning
 
-### Build Issues
-- Run `npm run build` to check for TypeScript errors
-- Verify all dependencies are installed
-- Check Node.js version compatibility
+### Timezone Calculation Problems
 
-## 🤝 Contributing
-
-1. Follow TypeScript strict mode guidelines
-2. Add comprehensive error handling
-3. Include audit logging for data changes
-4. Write tests for new functionality
-5. Update documentation for API changes
-
-## 📄 License
-
-Copyright (c) 2025 Mosaic Employer Solutions, Inc.
+- WorldTimeAPI connection and fallback testing
+- DST transition handling verification
+- Business date accuracy across multiple locations
