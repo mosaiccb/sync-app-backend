@@ -29,19 +29,4 @@ export declare function getParBrinkSales(request: HttpRequest, context: Invocati
  * GET /api/par-brink/configurations
  */
 export declare function getParBrinkConfigurations(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
-/**
- * Get all locations with timezone information for multi-state expansion
- * GET /api/par-brink/locations-with-timezones
- */
-/**
- * Get detailed labor information for a specific hour block
- * POST /api/par-brink/labor-hour-detail
- */
-export declare function getParBrinkLaborHourDetail(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
-export declare function getLocationsWithTimezones(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
-/**
- * Generate comprehensive pizza restaurant overstaffing report
- * POST /api/par-brink/overstaffing-report
- */
-export declare function getParBrinkOverstaffingReport(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 //# sourceMappingURL=parBrinkEnhanced.d.ts.map
