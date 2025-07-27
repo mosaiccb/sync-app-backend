@@ -46,10 +46,21 @@ async function getParBrinkConfiguration(): Promise<{ accessToken: string }> {
             if (parBrinkApi.KeyVaultSecretName) {
                 try {
                     console.log(`Retrieving PAR Brink access token from Key Vault: ${parBrinkApi.KeyVaultSecretName}`);
-                    const secret = await (tenantService as any).keyVaultClient.getSecret(parBrinkApi.KeyVaultSecretName);
+                    
+                    // Use the getClientSecret method pattern but for PAR Brink secret
+                    const { SecretClient } = await import('@azure/keyvault-secrets');
+                    const { DefaultAzureCredential } = await import('@azure/identity');
+                    
+                    const credential = new DefaultAzureCredential();
+                    const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
+                    const keyVaultClient = new SecretClient(keyVaultUrl, credential);
+                    
+                    const secret = await keyVaultClient.getSecret(parBrinkApi.KeyVaultSecretName);
                     if (secret.value) {
                         console.log('Successfully retrieved PAR Brink access token from Key Vault');
                         return { accessToken: secret.value };
+                    } else {
+                        console.log('Key Vault secret exists but has no value');
                     }
                 } catch (keyVaultError) {
                     console.log('Key Vault retrieval failed, trying other methods:', keyVaultError);
@@ -63,6 +74,8 @@ async function getParBrinkConfiguration(): Promise<{ accessToken: string }> {
                 if (config.accessToken && config.accessToken !== 'demo-access-token') {
                     console.log('Using PAR Brink access token from database configuration');
                     return { accessToken: config.accessToken };
+                } else {
+                    console.log(`Database configuration contains demo token: ${config.accessToken}, skipping`);
                 }
             }
         }
@@ -77,8 +90,8 @@ async function getParBrinkConfiguration(): Promise<{ accessToken: string }> {
         return { accessToken: envToken };
     }
     
-    console.log('No valid PAR Brink access token found');
-    return { accessToken: '' };
+    console.log('No valid PAR Brink access token found - all sources returned demo token or empty');
+    return { accessToken: envToken || '' };
 }
 
 // Real SOAP API call function - PAR Brink Labor2.svc integration
@@ -115,6 +128,11 @@ async function callParBrinkSoapAPI(
             const config = await getParBrinkConfiguration();
             token = config.accessToken;
         }
+        
+        // Validate access token for debugging
+        const expectedToken = 'tBJ5haIyv0uRbbWQL6FbXw==';
+        console.log(`Access token validation: Retrieved="${token}", Expected="${expectedToken}", Match=${token === expectedToken}`);
+        // TODO: REMOVE THIS VALIDATION LOG ONCE ACCESS TOKEN ISSUE IS RESOLVED!
         
         // Check if we have access token configured
         if (!token) {
