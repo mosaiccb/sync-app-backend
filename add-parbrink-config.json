@@ -1,0 +1,172 @@
+{
+  "Name": "PAR Brink POS API",
+  "Description": "PAR Brink POS system integration with 22 restaurant locations",
+  "Category": "POS Systems",
+  "Provider": "PAR Brink",
+  "BaseUrl": "https://api.parbrink.com",
+  "Version": "v1",
+  "AuthType": "Token",
+  "KeyVaultSecretName": "api-par-brink-pos-api-secret",
+  "ConfigurationJson": {
+    "accessToken": "demo-access-token",
+    "selectedEndpoints": ["dashboard", "sales", "labor"],
+    "locations": [
+      {
+        "id": "1",
+        "name": "Castle Rock",
+        "locationId": "109",
+        "token": "RPNrrDYtnke+OHNLfy74/A==",
+        "isActive": true
+      },
+      {
+        "id": "2",
+        "name": "Centre",
+        "locationId": "159",
+        "token": "16U5e0+GFEW/ixlKo+VJhg==",
+        "isActive": true
+      },
+      {
+        "id": "3",
+        "name": "Creekwalk",
+        "locationId": "651",
+        "token": "xQwecGX8lUGnpLlTbheuug==",
+        "isActive": true
+      },
+      {
+        "id": "4",
+        "name": "Crown Point",
+        "locationId": "479",
+        "token": "BhFEGI1ffUi1CLVe8/qtKw==",
+        "isActive": true
+      },
+      {
+        "id": "5",
+        "name": "Diamond Circle",
+        "locationId": "204133",
+        "token": "XbEjtd0tKkavxcJ043UsUg==",
+        "isActive": true
+      },
+      {
+        "id": "6",
+        "name": "Dublin Commons",
+        "locationId": "20408",
+        "token": "kRRYZ8SCiUatilX4KO7dBg==",
+        "isActive": true
+      },
+      {
+        "id": "7",
+        "name": "Falcon Landing",
+        "locationId": "67",
+        "token": "dWQm28UaeEq0qStmvTfACg==",
+        "isActive": true
+      },
+      {
+        "id": "8",
+        "name": "Forest Trace",
+        "locationId": "188",
+        "token": "Q58QIT+t+kGf9tzqHN2OCA==",
+        "isActive": true
+      },
+      {
+        "id": "9",
+        "name": "Greeley",
+        "locationId": "354",
+        "token": "2LUEj0hnMk+kCQlUcySYBQ==",
+        "isActive": true
+      },
+      {
+        "id": "10",
+        "name": "Highlands Ranch",
+        "locationId": "204049",
+        "token": "x/S/SDwyrEem54+ZoCILeg==",
+        "isActive": true
+      },
+      {
+        "id": "11",
+        "name": "Johnstown",
+        "locationId": "722",
+        "token": "gAAbGt6udki8DwPMkonciA==",
+        "isActive": true
+      },
+      {
+        "id": "12",
+        "name": "Lowry",
+        "locationId": "619",
+        "token": "37CE8WDS8k6isMGLMB9PRA==",
+        "isActive": true
+      },
+      {
+        "id": "13",
+        "name": "McCastlin Marketplace",
+        "locationId": "161",
+        "token": "7yC7X4KjZEuoZCDviTwspA==",
+        "isActive": true
+      },
+      {
+        "id": "14",
+        "name": "Northfield Commons",
+        "locationId": "336",
+        "token": "SUsjq0mEck6HwRkd7uNACg==",
+        "isActive": true
+      },
+      {
+        "id": "15",
+        "name": "Polaris Pointe",
+        "locationId": "1036",
+        "token": "M4X3DyDrLUKwi3CQHbqlOQ==",
+        "isActive": true
+      },
+      {
+        "id": "16",
+        "name": "Park Meadows",
+        "locationId": "26",
+        "token": "38AZmQGFQEy5VNajl9utlA==",
+        "isActive": true
+      },
+      {
+        "id": "17",
+        "name": "Ralston Creek",
+        "locationId": "441",
+        "token": "ZOJMZlffDEqC849w6PnF0g==",
+        "isActive": true
+      },
+      {
+        "id": "18",
+        "name": "Sheridan Parkway",
+        "locationId": "601",
+        "token": "A2dHEwIh9USNnpMrXCrpQw==",
+        "isActive": true
+      },
+      {
+        "id": "19",
+        "name": "South Academy Highlands",
+        "locationId": "204047",
+        "token": "y4xlWfqFJEuvmkocDGZGtw==",
+        "isActive": true
+      },
+      {
+        "id": "20",
+        "name": "Tower",
+        "locationId": "579",
+        "token": "6OwU+/7IOka+PV9JzAgzYQ==",
+        "isActive": true
+      },
+      {
+        "id": "21",
+        "name": "Wellington",
+        "locationId": "652",
+        "token": "YUn21EMuwki+goWuIJ5yGg==",
+        "isActive": true
+      },
+      {
+        "id": "22",
+        "name": "Westminster Promenade",
+        "locationId": "202794",
+        "token": "OpM9o1kTOkyMM2vevMMqdw==",
+        "isActive": true
+      }
+    ]
+  },
+  "CreatedBy": "setup-script",
+  "UpdatedBy": "setup-script"
+}

@@ -816,9 +816,10 @@ app.http('getParBrinkSales', {
     handler: getParBrinkSales,
 });
 
-app.http('getParBrinkConfigurations', {
-    methods: ['GET', 'OPTIONS'],
-    authLevel: 'anonymous',
-    route: 'par-brink/configurations',
-    handler: getParBrinkConfigurations,
-});
+// Disabled - using parBrinkConfigurations.ts instead
+// app.http('getParBrinkConfigurations', {
+//     methods: ['GET', 'OPTIONS'],
+//     authLevel: 'anonymous',
+//     route: 'par-brink/configurations',
+//     handler: getParBrinkConfigurations,
+// });
