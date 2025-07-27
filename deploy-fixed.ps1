@@ -97,36 +97,10 @@ try {
         else {
             Write-Host "✅ Already using correct subscription" -ForegroundColor Green
         }
-        
-        # Verify subscription is active
-        $currentAccount = az account show 2>$null | ConvertFrom-Json
-        if ($currentAccount.state -ne "Enabled") {
-            Write-Host "⚠️  Subscription state: $($currentAccount.state)" -ForegroundColor Yellow
-        }
-        
-        # Check token expiration (if available)
-        try {
-            $tokenInfo = az account get-access-token 2>$null | ConvertFrom-Json
-            if ($tokenInfo) {
-                $expiresOn = [DateTime]::Parse($tokenInfo.expiresOn)
-                $timeLeft = $expiresOn - (Get-Date)
-                if ($timeLeft.TotalMinutes -lt 30) {
-                    Write-Host "⚠️  Access token expires in $([Math]::Round($timeLeft.TotalMinutes)) minutes" -ForegroundColor Yellow
-                    Write-Host "💡 Consider running 'az login' to refresh" -ForegroundColor DarkGray
-                }
-                else {
-                    Write-Host "✅ Access token valid for $([Math]::Round($timeLeft.TotalHours, 1)) hours" -ForegroundColor Green
-                }
-            }
-        }
-        catch {
-            Write-Host "🔍 Could not check token expiration (continuing anyway)" -ForegroundColor DarkGray
-        }
     }
     else {
         Write-Host "❌ Azure CLI not authenticated" -ForegroundColor Red
         Write-Host "💡 Run: az login" -ForegroundColor Cyan
-        Write-Host "💡 Or run: az login --use-device-code (for headless environments)" -ForegroundColor DarkGray
         exit 1
     }
 }
@@ -163,91 +137,7 @@ if (-not (Test-Path "package.json")) {
     exit 1
 }
 
-# Verify target Azure Function App exists and is accessible
-Write-Host "`n🔍 Verifying Azure Function App accessibility..." -ForegroundColor Cyan
-try {
-    $functionApp = az functionapp show --name $FunctionAppName --resource-group $ResourceGroup 2>$null | ConvertFrom-Json
-    if ($functionApp) {
-        Write-Host "✅ Function App '$FunctionAppName' found in resource group '$ResourceGroup'" -ForegroundColor Green
-        Write-Host "📍 Location: $($functionApp.location)" -ForegroundColor Cyan
-        Write-Host "📍 Runtime: $($functionApp.siteConfig.linuxFxVersion -replace 'Node\|', 'Node.js ')" -ForegroundColor Cyan
-        Write-Host "📍 State: $($functionApp.state)" -ForegroundColor Cyan
-        
-        if ($functionApp.state -ne "Running") {
-            Write-Host "⚠️  Function App is not in 'Running' state" -ForegroundColor Yellow
-        }
-    }
-    else {
-        Write-Host "❌ Function App '$FunctionAppName' not found in resource group '$ResourceGroup'" -ForegroundColor Red
-        Write-Host "💡 Check the Function App name and Resource Group" -ForegroundColor Cyan
-        Write-Host "💡 Or create the Function App first using Azure Portal or CLI" -ForegroundColor DarkGray
-        exit 1
-    }
-}
-catch {
-    Write-Host "⚠️  Could not verify Function App (continuing anyway): $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "💡 Make sure the Function App '$FunctionAppName' exists in resource group '$ResourceGroup'" -ForegroundColor DarkGray
-}
-
 Write-Host "✅ Prerequisites check completed" -ForegroundColor Green
-
-# Check Git status (informational only - won't block deployment)
-Write-Host "`n📋 Checking Git status..." -ForegroundColor Cyan
-
-try {
-    # Check if this is a git repository
-    $isGitRepo = Test-Path ".git"
-    if ($isGitRepo) {
-        # Check Git status
-        $gitStatus = git status --porcelain 2>$null
-        if ($gitStatus) {
-            Write-Host "⚠️  Uncommitted changes detected:" -ForegroundColor Yellow
-            $gitStatusLines = $gitStatus -split "`n"
-            foreach ($line in $gitStatusLines | Select-Object -First 10) {
-                if ($line.Trim()) {
-                    Write-Host "   $line" -ForegroundColor Yellow
-                }
-            }
-            if ($gitStatusLines.Count -gt 10) {
-                Write-Host "   ... and $($gitStatusLines.Count - 10) more files" -ForegroundColor Yellow
-            }
-            
-            if ($AutoCommit) {
-                Write-Host "`n� Auto-committing changes..." -ForegroundColor Cyan
-                try {
-                    git add .
-                    git commit -m "$CommitMessage"
-                    Write-Host "✅ Changes committed successfully" -ForegroundColor Green
-                }
-                catch {
-                    Write-Host "⚠️  Auto-commit failed, but deployment will continue" -ForegroundColor Yellow
-                }
-            }
-            else {
-                Write-Host "�� No worries! This deployment will work WITHOUT commits!" -ForegroundColor Green
-                Write-Host "💡 Unlike VS Code right-click, this script bypasses Git requirements" -ForegroundColor Cyan
-                Write-Host "💡 Use -AutoCommit to automatically commit changes before deployment" -ForegroundColor DarkGray
-            }
-        }
-        else {
-            Write-Host "✅ Working directory is clean" -ForegroundColor Green
-        }
-        
-        # Show current branch
-        $currentBranch = git branch --show-current 2>$null
-        if ($currentBranch) {
-            Write-Host "📍 Current branch: $currentBranch" -ForegroundColor Cyan
-        }
-    }
-    else {
-        Write-Host "📁 Not a Git repository (no .git folder found)" -ForegroundColor Yellow
-    }
-}
-catch {
-    Write-Host "📁 Git not available or not a repository" -ForegroundColor Yellow
-}
-
-Write-Host "✅ Git status check completed (deployment will proceed regardless)" -ForegroundColor Green
 
 # Build the project (unless skipped)
 if (-not $SkipBuild -and -not $EnableRunFromPackage) {
@@ -278,43 +168,6 @@ else {
 
 # Method 1: Try Azure Functions Core Tools deployment
 Write-Host "`n🚀 Attempting deployment with Azure Functions Core Tools..." -ForegroundColor Cyan
-
-# Disable WEBSITE_RUN_FROM_PACKAGE for func publish (works better with pre-built files)
-if (-not $EnableRunFromPackage) {
-    Write-Host "🔧 Checking WEBSITE_RUN_FROM_PACKAGE setting..." -ForegroundColor Cyan
-    try {
-        $currentSettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-        if ($currentSettings -eq "1") {
-            Write-Host "🔄 Disabling WEBSITE_RUN_FROM_PACKAGE (will trigger app restart)..." -ForegroundColor Yellow
-            az functionapp config appsettings set --resource-group $ResourceGroup --name $FunctionAppName --settings WEBSITE_RUN_FROM_PACKAGE="0" --output none
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE disabled - using pre-built files" -ForegroundColor Green
-            Write-Host "⏳ Waiting for Azure infrastructure to propagate changes..." -ForegroundColor DarkGray
-            Write-Host "   🔄 30 seconds for setting propagation + app restart..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds 30
-            
-            # Verify the setting took effect
-            Write-Host "   🔍 Verifying setting propagation..." -ForegroundColor DarkGray
-            $verifySettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-            if ($verifySettings -eq "0" -or [string]::IsNullOrEmpty($verifySettings)) {
-                Write-Host "   ✅ Verified: WEBSITE_RUN_FROM_PACKAGE is disabled" -ForegroundColor Green
-            }
-            else {
-                Write-Host "   ⚠️  Setting may not have propagated yet (current: $verifySettings)" -ForegroundColor Yellow
-            }
-            
-            Write-Host "   ✅ Wait completed - deployment should now use correct mode" -ForegroundColor Green
-        }
-        elseif ($currentSettings -eq "0" -or [string]::IsNullOrEmpty($currentSettings)) {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE already disabled" -ForegroundColor Green
-        }
-        else {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE current value: $currentSettings" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Host "⚠️  Failed to check/set WEBSITE_RUN_FROM_PACKAGE, continuing anyway..." -ForegroundColor Yellow
-    }
-}
 
 try {
     if ($VerboseOutput) {
@@ -354,29 +207,6 @@ catch {
 
 # Method 2: ZIP deployment fallback
 Write-Host "`n📦 Attempting ZIP deployment..." -ForegroundColor Cyan
-
-# Enable WEBSITE_RUN_FROM_PACKAGE if requested
-if ($EnableRunFromPackage) {
-    Write-Host "🔧 Checking WEBSITE_RUN_FROM_PACKAGE setting..." -ForegroundColor Cyan
-    try {
-        $currentSettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-        if ($currentSettings -ne "1") {
-            Write-Host "🔄 Enabling WEBSITE_RUN_FROM_PACKAGE (will trigger app restart)..." -ForegroundColor Yellow
-            az functionapp config appsettings set --resource-group $ResourceGroup --name $FunctionAppName --settings WEBSITE_RUN_FROM_PACKAGE="1" --output none
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE enabled - Azure will build TypeScript on server" -ForegroundColor Green
-            Write-Host "⏳ Waiting for Azure infrastructure to propagate changes..." -ForegroundColor DarkGray
-            Write-Host "   🔄 30 seconds for setting propagation + app restart..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds 30
-            Write-Host "   ✅ Wait completed - deployment should now use server-side build" -ForegroundColor Green
-        }
-        else {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE already enabled" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Host "⚠️  Failed to check/set WEBSITE_RUN_FROM_PACKAGE, continuing anyway..." -ForegroundColor Yellow
-    }
-}
 
 try {
     # Create deployment package
@@ -439,7 +269,6 @@ try {
         Write-Host "❌ ZIP deployment failed" -ForegroundColor Red
         exit 1
     }
-    
 }
 catch {
     Write-Host "❌ ZIP deployment failed: $($_.Exception.Message)" -ForegroundColor Red
