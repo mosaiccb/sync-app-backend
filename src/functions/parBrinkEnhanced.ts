@@ -227,8 +227,9 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         const mTimeNow = mtTime.toISOString().replace('Z', '');
         const mTimeDay = businessDate || mtTime.toISOString().split('T')[0];
         
-        // Calculate dynamic offset minutes (Mountain Time can be -420 MST or -360 MDT)
-        const offsetMinutes = -mtTime.getTimezoneOffset();
+        // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
+        // PAR Brink expects the timezone offset for Mountain Time zone
+        const offsetMinutes = -420; // Mountain Standard Time (UTC-7)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -308,8 +309,9 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
         const mTimeNow = mtTime.toISOString().replace('Z', '');
         const mTimeDay = startDate || mtTime.toISOString().split('T')[0];
         
-        // Calculate dynamic offset minutes (Mountain Time can be -420 MST or -360 MDT)
-        const offsetMinutes = -mtTime.getTimezoneOffset();
+        // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
+        // PAR Brink expects the timezone offset for Mountain Time zone
+        const offsetMinutes = -420; // Mountain Standard Time (UTC-7)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
