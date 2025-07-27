@@ -128,10 +128,14 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
       };
     }
 
-    // Use current date if not specified
-    const targetDate = businessDate || getCurrentMountainTime();
+    // Use current restaurant business date if not specified
+    // For restaurants: business day can extend past midnight, so we need special logic
+    const targetDate = businessDate || getRestaurantBusinessDate();
+    const currentMountainDate = getCurrentMountainTime();
     
     context.log(`Fetching data for location: ${locationInfo.name} on date: ${targetDate}`);
+    context.log(`Current Mountain Time date: ${currentMountainDate}`);
+    context.log(`Using business date: ${targetDate} (${businessDate ? 'provided' : 'calculated'})`);
 
     // Fetch sales data
     const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, context);
@@ -209,6 +213,12 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     // Convert to Mountain Time format
     const mtDate = convertToMountainTime(businessDate);
     const mtNow = getCurrentMountainTime(true);
+    
+    // Calculate dynamic timezone offset for Mountain Time
+    const offsetMinutes = getMountainTimeOffset(new Date(businessDate));
+    context.log(`Using Mountain Time offset: ${offsetMinutes} minutes for date ${businessDate}`);
+    context.log(`Converted business date to Mountain Time: ${mtDate}`);
+    context.log(`Current Mountain Time: ${mtNow}`);
 
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -219,7 +229,7 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
               <v2:BusinessDate>${mtDate}</v2:BusinessDate>
               <v2:ModifiedTime>
                 <sys:DateTime>${mtNow}</sys:DateTime>
-                <sys:OffsetMinutes>-420</sys:OffsetMinutes>
+                <sys:OffsetMinutes>${offsetMinutes}</sys:OffsetMinutes>
               </v2:ModifiedTime>
             </v2:request>
           </v2:GetOrders>
@@ -227,12 +237,18 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
       </soapenv:Envelope>
     `;
 
-    context.log('Making PAR Brink API call...');
+    context.log('Making PAR Brink API call with SOAP body:', soapBody.substring(0, 500) + '...');
     
     const response = await axios.post('https://api11.brinkpos.net/sales2.svc', soapBody, { headers });
     
     // Parse XML response
     const xmlData = response.data;
+    context.log(`PAR Brink API response received. Response length: ${xmlData?.length || 0} characters`);
+    
+    // If no orders found and we're requesting future date, suggest trying current date
+    if (mtDate > getCurrentMountainTime()) {
+      context.log(`NOTE: Requesting future date (${mtDate}). Consider trying current date: ${getCurrentMountainTime()}`);
+    }
     const orders = parseOrdersFromXML(xmlData);
     
     context.log(`Retrieved ${orders.length} orders from PAR Brink`);
@@ -409,10 +425,56 @@ function getCurrentMountainTime(includeTime: boolean = false): string {
   return mountainTime.toISOString().slice(0, 10);
 }
 
+function getRestaurantBusinessDate(): string {
+  // For restaurants, the business day typically runs from early morning (5-6 AM) 
+  // until late night/early morning (2-3 AM next day)
+  // If it's after midnight but before 5 AM, use the previous calendar day as business date
+  const now = new Date();
+  const mountainTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Denver" }));
+  
+  // If it's between midnight and 5 AM Mountain Time, subtract a day for business date
+  if (mountainTime.getHours() < 5) {
+    const businessDate = new Date(mountainTime);
+    businessDate.setDate(businessDate.getDate() - 1);
+    return businessDate.toISOString().slice(0, 10);
+  }
+  
+  return mountainTime.toISOString().slice(0, 10);
+}
+
 function convertToMountainTime(dateString: string): string {
   const date = new Date(dateString);
   const mountainTime = new Date(date.toLocaleString("en-US", { timeZone: "America/Denver" }));
   return mountainTime.toISOString().slice(0, 10);
+}
+
+function getMountainTimeOffset(date?: Date): number {
+  // Use provided date or current date
+  const checkDate = date || new Date();
+  
+  // Get the timezone offset for Mountain Time on the specific date
+  // This automatically handles DST transitions
+  const formatter = new Intl.DateTimeFormat('en', {
+    timeZone: 'America/Denver',
+    timeZoneName: 'longOffset'
+  });
+  
+  const parts = formatter.formatToParts(checkDate);
+  const offsetString = parts.find(part => part.type === 'timeZoneName')?.value || '';
+  
+  // Parse the offset string (e.g., "GMT-07:00" or "GMT-06:00")
+  const match = offsetString.match(/GMT([+-]\d{2}):(\d{2})/);
+  if (match) {
+    const hours = parseInt(match[1]);
+    const minutes = parseInt(match[2]);
+    return hours * 60 + (hours < 0 ? -minutes : minutes);
+  }
+  
+  // Fallback: use Date object's timezone offset calculation
+  const utcTime = checkDate.getTime();
+  const localTime = new Date(checkDate.toLocaleString("en-US", { timeZone: "America/Denver" })).getTime();
+  const offsetMs = localTime - utcTime;
+  return Math.round(offsetMs / (1000 * 60));
 }
 
 // Register the function
