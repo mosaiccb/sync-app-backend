@@ -1,4 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { TenantDatabaseService } from '../services/TenantDatabaseService';
 
 // Production-ready PAR Brink API integration
 // Real SOAP API integration with PAR Brink Labor2.svc
@@ -32,6 +33,26 @@ export interface ParBrinkSales {
     EmployeeId?: string;
 }
 
+// Get PAR Brink configuration from database or fallback to environment
+async function getParBrinkConfiguration(): Promise<{ accessToken: string }> {
+    try {
+        const tenantService = new TenantDatabaseService();
+        const apis = await tenantService.getThirdPartyAPIsByProvider('PAR Brink');
+        
+        if (apis.length > 0 && apis[0].ConfigurationJson) {
+            const config = JSON.parse(apis[0].ConfigurationJson);
+            return { accessToken: config.accessToken };
+        }
+    } catch (error) {
+        console.log('Database config error, using environment fallback:', error);
+    }
+    
+    // Fallback to environment variable
+    return { 
+        accessToken: process.env.PAR_BRINK_ACCESS_TOKEN || '' 
+    };
+}
+
 // Real SOAP API call function - PAR Brink Labor2.svc integration
 async function callParBrinkSoapAPI(
     _endpoint: string,
@@ -60,12 +81,17 @@ async function callParBrinkSoapAPI(
                 throw new Error(`Unsupported PAR Brink action: ${action}`);
         }
         
-        // Check if we have access token configured
-        if (!accessToken && !process.env.PAR_BRINK_ACCESS_TOKEN) {
-            throw new Error('PAR Brink access token not configured. Please provide accessToken parameter or set PAR_BRINK_ACCESS_TOKEN environment variable.');
+        // Get access token from configuration if not provided
+        let token = accessToken;
+        if (!token) {
+            const config = await getParBrinkConfiguration();
+            token = config.accessToken;
         }
         
-        const token = accessToken || process.env.PAR_BRINK_ACCESS_TOKEN;
+        // Check if we have access token configured
+        if (!token) {
+            throw new Error('PAR Brink access token not configured. Please check database configuration or set PAR_BRINK_ACCESS_TOKEN environment variable.');
+        }
         
         // PAR Brink SOAP Headers - based on working parBrinkDashboard.ts
         const headers: Record<string, string> = {
@@ -229,7 +255,8 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         
         // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
         // PAR Brink expects the timezone offset for Mountain Time zone
-        const offsetMinutes = -420; // Mountain Standard Time (UTC-7)
+        // July 27, 2025 is during Daylight Saving Time, so use MDT
+        const offsetMinutes = -360; // Mountain Daylight Time (UTC-6)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -311,7 +338,8 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
         
         // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
         // PAR Brink expects the timezone offset for Mountain Time zone
-        const offsetMinutes = -420; // Mountain Standard Time (UTC-7)
+        // July 27, 2025 is during Daylight Saving Time, so use MDT
+        const offsetMinutes = -360; // Mountain Daylight Time (UTC-6)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
