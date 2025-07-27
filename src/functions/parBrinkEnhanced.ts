@@ -39,18 +39,46 @@ async function getParBrinkConfiguration(): Promise<{ accessToken: string }> {
         const tenantService = new TenantDatabaseService();
         const apis = await tenantService.getThirdPartyAPIsByProvider('PAR Brink');
         
-        if (apis.length > 0 && apis[0].ConfigurationJson) {
-            const config = JSON.parse(apis[0].ConfigurationJson);
-            return { accessToken: config.accessToken };
+        if (apis.length > 0) {
+            const parBrinkApi = apis[0];
+            
+            // First try to get access token from Key Vault using KeyVaultSecretName
+            if (parBrinkApi.KeyVaultSecretName) {
+                try {
+                    console.log(`Retrieving PAR Brink access token from Key Vault: ${parBrinkApi.KeyVaultSecretName}`);
+                    const secret = await (tenantService as any).keyVaultClient.getSecret(parBrinkApi.KeyVaultSecretName);
+                    if (secret.value) {
+                        console.log('Successfully retrieved PAR Brink access token from Key Vault');
+                        return { accessToken: secret.value };
+                    }
+                } catch (keyVaultError) {
+                    console.log('Key Vault retrieval failed, trying other methods:', keyVaultError);
+                }
+            }
+            
+            // Fallback to ConfigurationJson if Key Vault fails
+            if (parBrinkApi.ConfigurationJson) {
+                const config = JSON.parse(parBrinkApi.ConfigurationJson);
+                // Only use database token if it's not the demo token
+                if (config.accessToken && config.accessToken !== 'demo-access-token') {
+                    console.log('Using PAR Brink access token from database configuration');
+                    return { accessToken: config.accessToken };
+                }
+            }
         }
     } catch (error) {
         console.log('Database config error, using environment fallback:', error);
     }
     
-    // Fallback to environment variable
-    return { 
-        accessToken: process.env.PAR_BRINK_ACCESS_TOKEN || '' 
-    };
+    // Final fallback to environment variable
+    const envToken = process.env.PAR_BRINK_ACCESS_TOKEN;
+    if (envToken && envToken !== 'demo-access-token') {
+        console.log('Using PAR Brink access token from environment variable');
+        return { accessToken: envToken };
+    }
+    
+    console.log('No valid PAR Brink access token found');
+    return { accessToken: '' };
 }
 
 // Real SOAP API call function - PAR Brink Labor2.svc integration
