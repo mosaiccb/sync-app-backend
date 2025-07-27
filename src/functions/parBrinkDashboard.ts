@@ -445,7 +445,7 @@ async function getTimezoneDataAndBusinessDate(timezone: string): Promise<{ offse
       // dst_offset is the additional DST offset in seconds  
       // Total offset = raw_offset + dst_offset (if DST is active)
       const totalOffsetSeconds = response.data.raw_offset + (response.data.dst ? response.data.dst_offset : 0);
-      const offsetMinutes = Math.abs(totalOffsetSeconds / 60); // Convert to positive minutes for PAR Brink
+      const offsetMinutes = Math.round(Math.abs(totalOffsetSeconds / 60)); // Round to whole number for PAR Brink Int32
       
       // Get current local datetime from the API
       const localDateTime = response.data.datetime;
@@ -523,7 +523,7 @@ async function getTimezoneDataAndBusinessDate(timezone: string): Promise<{ offse
   const localAsUTC = new Date(
     `${partsMap.year}-${partsMap.month}-${partsMap.day}T${partsMap.hour}:${partsMap.minute}:${partsMap.second}Z`
   );
-  const offsetMinutes = Math.abs((checkDate.getTime() - localAsUTC.getTime()) / (1000 * 60));
+  const offsetMinutes = Math.round(Math.abs((checkDate.getTime() - localAsUTC.getTime()) / (1000 * 60))); // Round to whole number for PAR Brink Int32
   
   console.log(`Fallback timezone calculation for ${timezone}:`);
   console.log(`  Local time: ${localTime.toISOString()}`);
