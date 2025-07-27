@@ -4,4 +4,12 @@ import './functions/tenants';
 import './functions/thirdPartyAPIs';
 import './functions/parBrinkConfigurations';
 import './functions/parBrinkDashboard';
+import './functions/parBrinkEnhanced';
+import './functions/parBrinkToUkgETL';
+import './functions/simpleTest';
+import './functions/tenantCredentialsV2';
+import './functions/tenantsV2';
+import './functions/testDbConnection';
+import './functions/thirdPartyAPISimple';
+import './functions/ukgReadyAPI';
 //# sourceMappingURL=app.d.ts.map
