@@ -626,38 +626,96 @@ function generateSimulatedParBrinkData(method: string, params: Record<string, an
                         status: 'Active',
                         hireDate: '2022-08-20',
                         locationId: params.locationToken
+                    },
+                    {
+                        id: '1003',
+                        firstName: 'Mike',
+                        lastName: 'Johnson',
+                        employeeNumber: 'EMP003',
+                        position: 'Kitchen Staff',
+                        status: 'Active',
+                        hireDate: '2023-05-10',
+                        locationId: params.locationToken
+                    },
+                    {
+                        id: '1004',
+                        firstName: 'Sarah',
+                        lastName: 'Williams',
+                        employeeNumber: 'EMP004',
+                        position: 'Host',
+                        status: 'Active',
+                        hireDate: '2023-09-01',
+                        locationId: params.locationToken
+                    },
+                    {
+                        id: '1005',
+                        firstName: 'David',
+                        lastName: 'Brown',
+                        employeeNumber: 'EMP005',
+                        position: 'Server',
+                        status: 'Active',
+                        hireDate: '2023-03-20',
+                        locationId: params.locationToken
                     }
                 ],
-                totalCount: 2,
+                totalCount: 5,
                 retrievedAt: timestamp
             };
             
         case 'GetLaborShifts':
+        case 'GetShifts':
+            // Simulate currently clocked-in employees (like what PAR Brink GUI shows)
+            const currentDate = new Date();
+            const todayBusinessDate = currentDate.toISOString().split('T')[0];
+            
             return {
                 shifts: [
                     {
-                        employeeId: '1001',
-                        shiftDate: params.businessDate,
-                        clockIn: '09:00:00',
-                        clockOut: '17:00:00',
-                        hoursWorked: 8.0,
-                        position: 'Server',
-                        locationId: params.locationToken
+                        EmployeeId: '1001',
+                        JobId: 'Server',
+                        StartTime: '2025-01-27T09:15:00-08:00', // Clocked in this morning
+                        EndTime: null, // Still clocked in
+                        BusinessDate: todayBusinessDate,
+                        LocationId: params.locationToken || 'LOC001'
                     },
                     {
-                        employeeId: '1002',
-                        shiftDate: params.businessDate,
-                        clockIn: '08:00:00',
-                        clockOut: '16:00:00',
-                        hoursWorked: 8.0,
-                        position: 'Manager',
-                        locationId: params.locationToken
+                        EmployeeId: '1002', 
+                        JobId: 'Manager',
+                        StartTime: '2025-01-27T08:30:00-08:00', // Clocked in earlier
+                        EndTime: null, // Still clocked in
+                        BusinessDate: todayBusinessDate,
+                        LocationId: params.locationToken || 'LOC001'
+                    },
+                    {
+                        EmployeeId: '1003',
+                        JobId: 'Kitchen Staff', 
+                        StartTime: '2025-01-27T10:00:00-08:00', // Clocked in later
+                        EndTime: null, // Still clocked in
+                        BusinessDate: todayBusinessDate,
+                        LocationId: params.locationToken || 'LOC001'
+                    },
+                    {
+                        EmployeeId: '1004',
+                        JobId: 'Host',
+                        StartTime: '2025-01-27T11:30:00-08:00', // Most recent clock in
+                        EndTime: null, // Still clocked in  
+                        BusinessDate: todayBusinessDate,
+                        LocationId: params.locationToken || 'LOC001'
+                    },
+                    // Also include some completed shifts for completeness
+                    {
+                        EmployeeId: '1005',
+                        JobId: 'Server',
+                        StartTime: '2025-01-27T06:00:00-08:00', // Early morning shift
+                        EndTime: '2025-01-27T14:00:00-08:00', // Already clocked out
+                        BusinessDate: todayBusinessDate,
+                        LocationId: params.locationToken || 'LOC001'
                     }
                 ],
-                businessDate: params.businessDate,
-                totalShifts: 2,
-                totalHours: 16.0,
-                retrievedAt: timestamp
+                BusinessDate: params.businessDate || todayBusinessDate,
+                TotalShifts: 5,
+                ActiveShifts: 4, // 4 currently clocked in (matches PAR Brink GUI)
+                RetrievedAt: timestamp
             };
             
         case 'GetLocations':
