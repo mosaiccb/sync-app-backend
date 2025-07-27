@@ -7,7 +7,11 @@ import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
 import './functions/parBrinkConfigurations';
+import './functions/parBrinkDashboard';
+import './functions/parBrinkEnhanced';
 import './functions/parBrinkToUkgETL';
+import './functions/simpleTest';
+import './functions/thirdPartyAPISimple';
 import './functions/ukgReadyAPI';
 export { app };
 //# sourceMappingURL=index.d.ts.map

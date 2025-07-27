@@ -10,7 +10,11 @@ import './functions/health';
 import './functions/thirdPartyAPIs';
 import './functions/testDbConnection';
 import './functions/parBrinkConfigurations';
+import './functions/parBrinkDashboard';
+import './functions/parBrinkEnhanced';
 import './functions/parBrinkToUkgETL';
+import './functions/simpleTest';
+import './functions/thirdPartyAPISimple';
 import './functions/ukgReadyAPI';
 
 // Export the app for Azure Functions runtime
