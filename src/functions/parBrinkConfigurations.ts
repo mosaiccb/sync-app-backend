@@ -50,6 +50,39 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
         const brinkApi = apis[0];
         if (brinkApi.ConfigurationJson) {
           config = JSON.parse(brinkApi.ConfigurationJson);
+          
+          // Try to get real access token from Key Vault if KeyVaultSecretName exists
+          if (brinkApi.KeyVaultSecretName) {
+            try {
+              context.log(`Retrieving PAR Brink access token from Key Vault: ${brinkApi.KeyVaultSecretName}`);
+              
+              const { SecretClient } = await import('@azure/keyvault-secrets');
+              const { DefaultAzureCredential } = await import('@azure/identity');
+              
+              const credential = new DefaultAzureCredential();
+              const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
+              const keyVaultClient = new SecretClient(keyVaultUrl, credential);
+              
+              const secret = await keyVaultClient.getSecret(brinkApi.KeyVaultSecretName);
+              if (secret.value) {
+                context.log('Successfully retrieved PAR Brink access token from Key Vault for configurations');
+                config.accessToken = secret.value; // Override with real token
+              } else {
+                context.log('Key Vault secret exists but has no value, using configuration token');
+              }
+            } catch (keyVaultError) {
+              context.log('Key Vault retrieval failed in configurations, using configuration token:', keyVaultError);
+            }
+          }
+          
+          // If still demo token, try environment variable
+          if (config.accessToken === 'demo-access-token') {
+            const envToken = process.env.PAR_BRINK_ACCESS_TOKEN;
+            if (envToken && envToken !== 'demo-access-token') {
+              context.log('Using PAR Brink access token from environment variable in configurations');
+              config.accessToken = envToken;
+            }
+          }
         } else {
           config = getStaticBrinkConfiguration();
         }
@@ -80,6 +113,20 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
     };
 
     context.log(`Returning ${sanitizedLocations.length} active PAR Brink locations`);
+    
+    // Log access token for debugging
+    context.log('Configurations returning access token:', 
+      config.accessToken?.substring(0, 8) + '...');
+    
+    // TODO: Validation logging - remove after confirming fix  
+    const expectedToken = 'tBJ5haIyv0uRbbWQL6FbXw==';
+    if (config.accessToken === expectedToken) {
+      context.log('✅ Configurations returning CORRECT access token to frontend');
+    } else if (config.accessToken === 'demo-access-token') {
+      context.log('❌ Configurations still returning DEMO token to frontend');
+    } else {
+      context.log('⚠️ Configurations returning unexpected token to frontend');
+    }
 
     return {
       status: 200,
