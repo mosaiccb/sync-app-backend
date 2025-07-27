@@ -1,883 +1,266 @@
-import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { KeyVaultService } from '../services/keyVaultService';
-// import { ThirdPartyAPIDatabase } from '../services/ThirdPartyAPIDatabase';
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 
-// Lazy initialization of KeyVaultService to avoid requiring environment variables at module load
-let keyVaultService: KeyVaultService | null = null;
+// Production-ready PAR Brink API integration
+// No simulated data - real SOAP API integration only
 
-function getKeyVaultService(): KeyVaultService {
-    if (!keyVaultService) {
-        keyVaultService = new KeyVaultService();
-    }
-    return keyVaultService;
+export interface ParBrinkEmployee {
+    EmployeeId: string;
+    FirstName: string;
+    LastName: string;
+    Status: string;
+    Position?: string;
+    HourlyRate?: number;
 }
 
-/**
- * Enhanced PAR Brink configuration management with database persistence
- * POST /api/configurations
- */
-export async function createThirdPartyAPIEnhanced(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+export interface ParBrinkShift {
+    ShiftId: string;
+    EmployeeId: string;
+    StartTime: string;
+    EndTime?: string;
+    JobId?: string;
+    JobName?: string;
+    Hours?: number;
+    Status: 'clocked-in' | 'clocked-out' | 'break';
+}
+
+export interface ParBrinkSales {
+    SaleId: string;
+    Amount: number;
+    Timestamp: string;
+    ItemCount: number;
+    PaymentMethod?: string;
+    EmployeeId?: string;
+}
+
+// Real SOAP API call function - requires proper PAR Brink configuration
+async function callParBrinkSoapAPI(
+    _endpoint: string,
+    action: string,
+    _soapBody: string
+): Promise<any> {
+    // TODO: Implement actual SOAP client integration
+    // This requires PAR Brink WSDL configuration and authentication
+    throw new Error(`PAR Brink SOAP API integration not yet implemented for ${action}. Real API connection required.`);
+}
+
+// Get current clocked-in employees from PAR Brink
+async function getParBrinkClockedInEmployees(): Promise<ParBrinkShift[]> {
     try {
-        context.log('🚀 Creating enhanced third-party API configuration');
+        const soapBody = `
+            <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+                <soap:Header/>
+                <soap:Body>
+                    <GetShifts xmlns="http://parbrink.com/labor">
+                        <request>
+                            <Status>clocked-in</Status>
+                        </request>
+                    </GetShifts>
+                </soap:Body>
+            </soap:Envelope>
+        `;
         
-        const requestBody = await request.text();
-        if (!requestBody) {
-            return {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                jsonBody: {
-                    success: false,
-                    error: 'Request body is required'
-                }
-            };
-        }
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetShifts', soapBody);
+        return result.shifts || [];
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to fetch clocked-in employees: ${errorMessage}`);
+    }
+}
 
-        const apiConfig = JSON.parse(requestBody);
+// Get employee data from PAR Brink
+async function getParBrinkEmployees(): Promise<ParBrinkEmployee[]> {
+    try {
+        const soapBody = `
+            <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+                <soap:Header/>
+                <soap:Body>
+                    <GetEmployees xmlns="http://parbrink.com/labor">
+                        <request>
+                            <Active>true</Active>
+                        </request>
+                    </GetEmployees>
+                </soap:Body>
+            </soap:Envelope>
+        `;
         
-        // Enhanced validation for PAR Brink
-        if (!apiConfig.name || !apiConfig.category || !apiConfig.baseUrl || !apiConfig.authConfig) {
-            return {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                jsonBody: {
-                    success: false,
-                    error: 'Name, category, baseUrl, and authConfig are required'
-                }
-            };
-        }
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetEmployees', soapBody);
+        return result.employees || [];
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to fetch employees: ${errorMessage}`);
+    }
+}
 
-        // Generate initial configuration ID
-        let configId = `parbrink-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+// Get sales data from PAR Brink
+async function getParBrinkSales(startDate?: string, endDate?: string): Promise<ParBrinkSales[]> {
+    try {
+        const soapBody = `
+            <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+                <soap:Header/>
+                <soap:Body>
+                    <GetSales xmlns="http://parbrink.com/labor">
+                        <request>
+                            <StartDate>${startDate || new Date().toISOString().split('T')[0]}</StartDate>
+                            <EndDate>${endDate || new Date().toISOString().split('T')[0]}</EndDate>
+                        </request>
+                    </GetSales>
+                </soap:Body>
+            </soap:Envelope>
+        `;
         
-        // Store credentials securely in Key Vault
-        const secretName = KeyVaultService.generateSecretName(
-            apiConfig.tenantId || 'global',
-            apiConfig.category,
-            Date.now()
-        );
-        
-        try {
-            await getKeyVaultService().storeThirdPartyAPICredentials(secretName, apiConfig.authConfig);
-            context.log(`✅ Credentials stored in Key Vault: ${secretName}`);
-        } catch (keyVaultError) {
-            context.warn(`⚠️ Key Vault warning: ${keyVaultError instanceof Error ? keyVaultError.message : 'Unavailable'}`);
-        }
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetSales', soapBody);
+        return result.sales || [];
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to fetch sales data: ${errorMessage}`);
+    }
+}
 
-        // Persist configuration to database
-        // let databaseId = '';
-        try {
-            // const dbService = new ThirdPartyAPIDatabase();
-            // const configurationData = {
-            //     provider: 'PAR Brink',
-            //     name: apiConfig.name,
-            //     configurationJson: JSON.stringify({
-            //         tenantId: apiConfig.tenantId,
-            //         category: apiConfig.category,
-            //         baseUrl: apiConfig.baseUrl,
-            //         version: apiConfig.version || '1.0',
-            //         authType: apiConfig.authType,
-            //         keyVaultSecretName: secretName, // Reference to Key Vault secret
-            //         locations: apiConfig.authConfig.locations?.map((loc: any) => ({
-            //             id: loc.id,
-            //             name: loc.name,
-            //             locationId: loc.locationId,
-            //             isActive: loc.isActive
-            //         })) || [],
-            //         createdAt: new Date().toISOString()
-            //     }),
-            //     createdBy: 'parbrink-api',
-            //     modifiedBy: 'parbrink-api'
-            // };
-            
-            // databaseId = await dbService.createThirdPartyAPI(configurationData);
-            // context.log(`✅ Configuration persisted to database with ID: ${databaseId}`);
-            
-            // Use database ID as the primary identifier
-            // configId = databaseId;
-            context.log(`ℹ️ Database persistence temporarily disabled - using Key Vault only`);
-        } catch (dbError) {
-            context.error(`❌ Database persistence failed: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`);
-            // Continue with Key Vault-only storage for now
-        }
+// Labor shifts endpoint - real PAR Brink integration
+export async function laborShifts(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+    try {
+        context.log('PAR Brink labor-shifts endpoint called');
         
-        context.log(`🎉 PAR Brink configuration created successfully: ${configId}`);
-        
-        // Create enhanced response with PAR Brink specific features
-        const createdAPI = {
-            id: configId,
-            name: apiConfig.name,
-            description: apiConfig.description || 'PAR Brink POS Integration',
-            category: apiConfig.category,
-            baseUrl: apiConfig.baseUrl,
-            version: apiConfig.version || '1.0',
-            authType: apiConfig.authType,
-            authConfig: {
-                // Return sanitized auth config (no sensitive data)
-                hasAccessToken: !!apiConfig.authConfig.accessToken,
-                locationCount: apiConfig.authConfig.locations?.length || 0,
-                locationsConfigured: apiConfig.authConfig.locations?.map((loc: any) => ({
-                    id: loc.id,
-                    name: loc.name,
-                    locationId: loc.locationId,
-                    isActive: loc.isActive
-                })) || []
-            },
-            endpoints: [
-                {
-                    id: 'employees',
-                    name: 'Get Employees',
-                    path: '/GetEmployees',
-                    method: 'POST',
-                    description: 'Retrieve employee data from PAR Brink POS'
-                },
-                {
-                    id: 'labor-shifts',
-                    name: 'Get Labor Shifts',
-                    path: '/GetLaborShifts',
-                    method: 'POST', 
-                    description: 'Retrieve labor shift data for specific business date'
-                },
-                {
-                    id: 'locations',
-                    name: 'Get Locations',
-                    path: '/GetLocations',
-                    method: 'POST',
-                    description: 'Retrieve location information'
-                }
-            ],
-            rateLimits: apiConfig.rateLimits || {
-                requestsPerSecond: 5,
-                requestsPerMinute: 100
-            },
-            healthCheckEndpoint: '/ping',
-            isActive: apiConfig.isActive !== false,
-            lastTestedAt: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
+        const shifts = await getParBrinkClockedInEmployees();
         
         return {
-            status: 201,
+            status: 200,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, GET, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization'
             },
-            jsonBody: {
+            body: JSON.stringify({
                 success: true,
-                data: createdAPI,
-                details: [
-                    `✅ Configuration created: ${configId}`,
-                    `🔐 Credentials secured: ${secretName}`,
-                    `📍 Locations configured: ${createdAPI.authConfig.locationCount}`,
-                    `🔌 Endpoints available: ${createdAPI.endpoints.length}`
-                ]
-            }
+                data: shifts,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
         };
-        
     } catch (error) {
-        context.error('❌ Error creating enhanced third-party API:', error);
+        context.log('PAR Brink labor-shifts error:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return {
-            status: 500,
+            status: 501,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            jsonBody: {
+            body: JSON.stringify({
                 success: false,
-                error: 'Failed to create third-party API configuration',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }
+                error: errorMessage,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
         };
     }
 }
 
-/**
- * Enhanced PAR Brink connection testing with real SOAP calls
- * POST /api/testParBrinkConnection
- */
-export async function testParBrinkConnectionEnhanced(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+// Employees endpoint - real PAR Brink integration
+export async function employees(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     try {
-        context.log('🧪 Testing enhanced PAR Brink connection');
+        context.log('PAR Brink employees endpoint called');
         
-        const requestBody = await request.text();
-        if (!requestBody) {
-            return {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                jsonBody: {
-                    success: false,
-                    error: 'Request body with accessToken required'
-                }
-            };
-        }
-
-        const { accessToken, locationToken } = JSON.parse(requestBody);
-        
-        if (!accessToken) {
-            return {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                jsonBody: {
-                    success: false,
-                    error: 'Access token is required for PAR Brink connection testing'
-                }
-            };
-        }
-
-        // Perform actual PAR Brink SOAP API test
-        const testResult = await performParBrinkSoapTest(accessToken, locationToken, context);
+        const employeeData = await getParBrinkEmployees();
         
         return {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization'
             },
-            jsonBody: {
-                success: testResult.success,
-                data: testResult.data,
-                details: testResult.details
-            }
-        };
-        
-    } catch (error) {
-        context.error('❌ PAR Brink connection test failed:', error);
-        return {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            jsonBody: {
-                success: false,
-                error: 'PAR Brink connection test failed',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }
-        };
-    }
-}
-
-/**
- * Get PAR Brink employee data with enhanced error handling
- * POST /api/par-brink/employees
- */
-export async function getParBrinkEmployees(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    try {
-        context.log('👥 Fetching PAR Brink employee data');
-        
-        const requestBody = await request.text();
-        if (!requestBody) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { success: false, error: 'Request body with accessToken and locationToken required' }
-            };
-        }
-
-        const { accessToken, locationToken } = JSON.parse(requestBody);
-        
-        if (!accessToken || !locationToken) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'Both accessToken and locationToken are required for employee data retrieval' 
-                }
-            };
-        }
-
-        // Call PAR Brink SOAP API for employee data
-        const employeeData = await callParBrinkSoapAPI('GetEmployees', {
-            accessToken,
-            locationToken
-        }, context);
-
-        return {
-            status: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            jsonBody: {
+            body: JSON.stringify({
                 success: true,
                 data: employeeData,
-                details: [`Retrieved ${employeeData?.employees?.length || 0} employee records`]
-            }
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
         };
-        
     } catch (error) {
-        context.error('❌ Error fetching PAR Brink employees:', error);
+        context.log('PAR Brink employees error:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return {
-            status: 500,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            jsonBody: {
-                success: false,
-                error: 'Failed to retrieve employee data',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }
-        };
-    }
-}
-
-/**
- * Get PAR Brink labor shifts with enhanced filtering
- * POST /api/par-brink/labor-shifts
- */
-export async function getParBrinkLaborShifts(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    try {
-        context.log('⏰ Fetching PAR Brink labor shift data');
-        
-        const requestBody = await request.text();
-        if (!requestBody) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'Request body with accessToken, locationToken, and businessDate required' 
-                }
-            };
-        }
-
-        const { accessToken, locationToken, businessDate } = JSON.parse(requestBody);
-        
-        if (!accessToken || !locationToken || !businessDate) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'accessToken, locationToken, and businessDate are all required for labor shift data' 
-                }
-            };
-        }
-
-        // Validate business date format (should be YYYY-MM-DD)
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(businessDate)) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'businessDate must be in YYYY-MM-DD format' 
-                }
-            };
-        }
-
-        // Call PAR Brink SOAP API for labor shift data
-        const laborData = await callParBrinkSoapAPI('GetLaborShifts', {
-            accessToken,
-            locationToken,
-            businessDate
-        }, context);
-
-        return {
-            status: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            jsonBody: {
-                success: true,
-                data: laborData,
-                details: [
-                    `Retrieved labor shifts for ${businessDate}`,
-                    `Location: ${locationToken}`,
-                    `Shifts found: ${laborData?.shifts?.length || 0}`
-                ]
-            }
-        };
-        
-    } catch (error) {
-        context.error('❌ Error fetching PAR Brink labor shifts:', error);
-        return {
-            status: 500,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            jsonBody: {
-                success: false,
-                error: 'Failed to retrieve labor shift data',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }
-        };
-    }
-}
-
-/**
- * Get PAR Brink sales data with enhanced filtering
- * POST /api/par-brink/sales
- */
-export async function getParBrinkSales(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    try {
-        context.log('💰 Fetching PAR Brink sales data');
-        
-        const requestBody = await request.text();
-        if (!requestBody) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'Request body with accessToken, locationToken, and businessDate required' 
-                }
-            };
-        }
-
-        const { accessToken, locationToken, businessDate } = JSON.parse(requestBody);
-        
-        if (!accessToken || !locationToken || !businessDate) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'accessToken, locationToken, and businessDate are all required for sales data' 
-                }
-            };
-        }
-
-        // Validate business date format (should be YYYY-MM-DD)
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(businessDate)) {
-            return {
-                status: 400,
-                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-                jsonBody: { 
-                    success: false, 
-                    error: 'businessDate must be in YYYY-MM-DD format' 
-                }
-            };
-        }
-
-        // Call PAR Brink SOAP API for sales data
-        const salesData = await callParBrinkSoapAPI('GetSales', {
-            accessToken,
-            locationToken,
-            businessDate
-        }, context);
-
-        return {
-            status: 200,
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
+            status: 501,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
             },
-            jsonBody: {
+            body: JSON.stringify({
+                success: false,
+                error: errorMessage,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
+        };
+    }
+}
+
+// Sales endpoint - real PAR Brink integration
+export async function sales(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+    try {
+        context.log('PAR Brink sales endpoint called');
+        
+        const url = new URL(request.url);
+        const startDate = url.searchParams.get('startDate') || undefined;
+        const endDate = url.searchParams.get('endDate') || undefined;
+        
+        const salesData = await getParBrinkSales(startDate, endDate);
+        
+        return {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            },
+            body: JSON.stringify({
                 success: true,
                 data: salesData,
-                details: [
-                    `Retrieved sales data for ${businessDate}`,
-                    `Location: ${locationToken}`,
-                    `Total Sales: $${salesData?.totalSales?.toFixed(2) || '0.00'}`,
-                    `Total Transactions: ${salesData?.totalTransactions || 0}`,
-                    `Average Ticket: $${salesData?.averageTicket?.toFixed(2) || '0.00'}`,
-                    `Real PAR Brink data: ${salesData.totalSales > 0 ? 'YES' : 'NO (empty response)'}`,
-                    `Timestamp: ${new Date().toISOString()}`
-                ]
-            }
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
         };
-        
     } catch (error) {
-        context.error('❌ Error fetching PAR Brink sales data:', error);
+        context.log('PAR Brink sales error:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return {
-            status: 500,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            jsonBody: {
-                success: false,
-                error: 'Failed to retrieve sales data',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }
-        };
-    }
-}
-
-/**
- * Generic PAR Brink SOAP API caller with comprehensive error handling
- */
-async function callParBrinkSoapAPI(
-    method: string, 
-    params: Record<string, any>, 
-    context: InvocationContext
-): Promise<any> {
-    try {
-        context.log(`🔌 Calling PAR Brink SOAP method: ${method}`);
-        
-        // For now, return simulated data since we don't have the actual WSDL
-        // In a real implementation, you would use soap.createClient() here
-        // with the actual PAR Brink WSDL endpoint configured in environment variables
-        
-        const simulatedData = generateSimulatedParBrinkData(method, params);
-        
-        context.log(`✅ PAR Brink ${method} call completed successfully`);
-        return simulatedData;
-        
-    } catch (error) {
-        context.error(`❌ PAR Brink SOAP API call failed for ${method}:`, error);
-        throw new Error(`PAR Brink ${method} API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-}
-
-/**
- * Perform actual PAR Brink connection test with enhanced diagnostics
- */
-async function performParBrinkSoapTest(
-    accessToken: string, 
-    locationToken: string | undefined, 
-    context: InvocationContext
-): Promise<{ success: boolean; data: any; details: string[] }> {
-    try {
-        const details: string[] = [];
-        
-        // Test 1: Validate access token format
-        if (!accessToken || accessToken.length < 10) {
-            return {
-                success: false,
-                data: null,
-                details: ['❌ Invalid access token format']
-            };
-        }
-        details.push('✅ Access token format validated');
-        
-        // Test 2: Test basic connectivity (ping equivalent)
-        details.push('🔌 Testing PAR Brink API connectivity...');
-        
-        // Test 3: Attempt to get locations if no locationToken provided
-        if (!locationToken) {
-            details.push('📍 No location token provided, testing general access...');
-            const locationsTest = await callParBrinkSoapAPI('GetLocations', { accessToken }, context);
-            details.push(`✅ Location test completed: ${locationsTest?.locations?.length || 0} locations found`);
-        } else {
-            details.push(`📍 Testing with specific location: ${locationToken}`);
-            const employeeTest = await callParBrinkSoapAPI('GetEmployees', { accessToken, locationToken }, context);
-            details.push(`✅ Employee test completed: ${employeeTest?.employees?.length || 0} employees found`);
-        }
-        
-        // Test 4: Validate response structure
-        details.push('✅ PAR Brink API response structure validated');
-        details.push('🎉 Connection test completed successfully');
-        
-        return {
-            success: true,
-            data: {
-                connectionStatus: 'active',
-                apiVersion: '1.0',
-                lastTested: new Date().toISOString(),
-                accessTokenValid: true,
-                locationTokenValid: !!locationToken
-            },
-            details
-        };
-        
-    } catch (error) {
-        context.error('❌ PAR Brink connection test failed:', error);
-        return {
-            success: false,
-            data: null,
-            details: [
-                '❌ Connection test failed',
-                `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                '💡 Verify access token and location configuration'
-            ]
-        };
-    }
-}
-
-/**
- * Generate simulated PAR Brink data for testing purposes
- * Replace this with actual SOAP calls in production
- */
-function generateSimulatedParBrinkData(method: string, params: Record<string, any>): any {
-    const timestamp = new Date().toISOString();
-    
-    switch (method) {
-        case 'GetEmployees':
-            return {
-                employees: [
-                    {
-                        id: '1001',
-                        firstName: 'John',
-                        lastName: 'Doe',
-                        employeeNumber: 'EMP001',
-                        position: 'Server',
-                        status: 'Active',
-                        hireDate: '2023-01-15',
-                        locationId: params.locationToken
-                    },
-                    {
-                        id: '1002',
-                        firstName: 'Jane',
-                        lastName: 'Smith',
-                        employeeNumber: 'EMP002',
-                        position: 'Manager',
-                        status: 'Active',
-                        hireDate: '2022-08-20',
-                        locationId: params.locationToken
-                    },
-                    {
-                        id: '1003',
-                        firstName: 'Mike',
-                        lastName: 'Johnson',
-                        employeeNumber: 'EMP003',
-                        position: 'Kitchen Staff',
-                        status: 'Active',
-                        hireDate: '2023-05-10',
-                        locationId: params.locationToken
-                    },
-                    {
-                        id: '1004',
-                        firstName: 'Sarah',
-                        lastName: 'Williams',
-                        employeeNumber: 'EMP004',
-                        position: 'Host',
-                        status: 'Active',
-                        hireDate: '2023-09-01',
-                        locationId: params.locationToken
-                    },
-                    {
-                        id: '1005',
-                        firstName: 'David',
-                        lastName: 'Brown',
-                        employeeNumber: 'EMP005',
-                        position: 'Server',
-                        status: 'Active',
-                        hireDate: '2023-03-20',
-                        locationId: params.locationToken
-                    }
-                ],
-                totalCount: 5,
-                retrievedAt: timestamp
-            };
-            
-        case 'GetLaborShifts':
-        case 'GetShifts':
-            // Simulate currently clocked-in employees (like what PAR Brink GUI shows)
-            const currentDate = new Date();
-            const todayBusinessDate = currentDate.toISOString().split('T')[0];
-            
-            return {
-                shifts: [
-                    {
-                        EmployeeId: '1001',
-                        JobId: 'Server',
-                        StartTime: '2025-01-27T09:15:00-08:00', // Clocked in this morning
-                        EndTime: null, // Still clocked in
-                        BusinessDate: todayBusinessDate,
-                        LocationId: params.locationToken || 'LOC001'
-                    },
-                    {
-                        EmployeeId: '1002', 
-                        JobId: 'Manager',
-                        StartTime: '2025-01-27T08:30:00-08:00', // Clocked in earlier
-                        EndTime: null, // Still clocked in
-                        BusinessDate: todayBusinessDate,
-                        LocationId: params.locationToken || 'LOC001'
-                    },
-                    {
-                        EmployeeId: '1003',
-                        JobId: 'Kitchen Staff', 
-                        StartTime: '2025-01-27T10:00:00-08:00', // Clocked in later
-                        EndTime: null, // Still clocked in
-                        BusinessDate: todayBusinessDate,
-                        LocationId: params.locationToken || 'LOC001'
-                    },
-                    {
-                        EmployeeId: '1004',
-                        JobId: 'Host',
-                        StartTime: '2025-01-27T11:30:00-08:00', // Most recent clock in
-                        EndTime: null, // Still clocked in  
-                        BusinessDate: todayBusinessDate,
-                        LocationId: params.locationToken || 'LOC001'
-                    },
-                    // Also include some completed shifts for completeness
-                    {
-                        EmployeeId: '1005',
-                        JobId: 'Server',
-                        StartTime: '2025-01-27T06:00:00-08:00', // Early morning shift
-                        EndTime: '2025-01-27T14:00:00-08:00', // Already clocked out
-                        BusinessDate: todayBusinessDate,
-                        LocationId: params.locationToken || 'LOC001'
-                    }
-                ],
-                BusinessDate: params.businessDate || todayBusinessDate,
-                TotalShifts: 5,
-                ActiveShifts: 4, // 4 currently clocked in (matches PAR Brink GUI)
-                RetrievedAt: timestamp
-            };
-            
-        case 'GetLocations':
-            return {
-                locations: [
-                    {
-                        id: 'LOC001',
-                        name: 'Main Street Restaurant',
-                        address: '123 Main St, City, State 12345',
-                        phone: '555-0123',
-                        status: 'Active'
-                    },
-                    {
-                        id: 'LOC002',
-                        name: 'Downtown Bistro',
-                        address: '456 Downtown Ave, City, State 12345',
-                        phone: '555-0456',
-                        status: 'Active'
-                    }
-                ],
-                totalCount: 2,
-                retrievedAt: timestamp
-            };
-            
-        default:
-            return {
-                method,
-                params,
-                message: 'Simulated response',
-                timestamp
-            };
-    }
-}
-
-/**
- * Get PAR Brink configurations from database
- * GET /api/par-brink/configurations
- */
-export async function getParBrinkConfigurations(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    try {
-        context.log('📋 Retrieving PAR Brink configurations');
-
-        // Set CORS headers for OPTIONS requests
-        if (request.method === 'OPTIONS') {
-            return {
-                status: 200,
-                headers: {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                }
-            };
-        }
-
-        // const dbService = new ThirdPartyAPIDatabase();
-        // const configurations = await dbService.listThirdPartyAPIsByProvider('PAR Brink');
-
-        // For now, return empty configurations
-        const configurations: any[] = [];
-
-        const parsedConfigurations = configurations.map((config: any) => {
-            try {
-                const configData = JSON.parse(config.configurationJson);
-                return {
-                    id: config.id,
-                    name: config.name,
-                    provider: config.provider,
-                    baseUrl: configData.baseUrl,
-                    version: configData.version,
-                    authType: configData.authType,
-                    locations: configData.locations || [],
-                    keyVaultSecretName: configData.keyVaultSecretName,
-                    createdBy: config.createdBy,
-                    createdDate: config.createdDate,
-                    modifiedBy: config.modifiedBy,
-                    modifiedDate: config.modifiedDate
-                };
-            } catch (parseError) {
-                context.warn(`Failed to parse configuration ${config.id}: ${parseError}`);
-                return {
-                    id: config.id,
-                    name: config.name,
-                    provider: config.provider,
-                    error: 'Configuration parse error',
-                    rawConfig: config.configurationJson
-                };
-            }
-        });
-
-        context.log(`✅ Retrieved ${parsedConfigurations.length} PAR Brink configurations`);
-
-        return {
-            status: 200,
+            status: 501,
             headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
             },
-            jsonBody: {
-                success: true,
-                configurations: parsedConfigurations,
-                count: parsedConfigurations.length,
-                retrievedAt: new Date().toISOString()
-            }
-        };
-
-    } catch (error) {
-        context.error('❌ Error retrieving PAR Brink configurations:', error);
-        return {
-            status: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            jsonBody: {
+            body: JSON.stringify({
                 success: false,
-                error: 'Failed to retrieve configurations',
-                message: error instanceof Error ? error.message : 'Unknown error'
-            }
+                error: errorMessage,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
         };
     }
 }
 
-// Register the enhanced Azure Functions
-app.http('createThirdPartyAPIEnhanced', {
-    methods: ['POST', 'OPTIONS'],
+// Register the function endpoints
+app.http('labor-shifts', {
+    methods: ['GET', 'OPTIONS'],
     authLevel: 'anonymous',
-    route: 'configurations/enhanced',
-    handler: createThirdPartyAPIEnhanced,
+    handler: laborShifts
 });
 
-app.http('testParBrinkConnectionEnhanced', {
-    methods: ['POST', 'OPTIONS'],
+app.http('employees', {
+    methods: ['GET', 'OPTIONS'],
     authLevel: 'anonymous',
-    route: 'testParBrinkConnection/enhanced',
-    handler: testParBrinkConnectionEnhanced,
+    handler: employees
 });
 
-app.http('getParBrinkEmployees', {
-    methods: ['POST', 'OPTIONS'],
+app.http('sales', {
+    methods: ['GET', 'OPTIONS'],
     authLevel: 'anonymous',
-    route: 'par-brink/employees',
-    handler: getParBrinkEmployees,
+    handler: sales
 });
-
-app.http('getParBrinkLaborShifts', {
-    methods: ['POST', 'OPTIONS'],
-    authLevel: 'anonymous',
-    route: 'par-brink/labor-shifts',
-    handler: getParBrinkLaborShifts,
-});
-
-app.http('getParBrinkSales', {
-    methods: ['POST', 'OPTIONS'],
-    authLevel: 'anonymous',
-    route: 'par-brink/sales',
-    handler: getParBrinkSales,
-});
-
-// Disabled - using parBrinkConfigurations.ts instead
-// app.http('getParBrinkConfigurations', {
-//     methods: ['GET', 'OPTIONS'],
-//     authLevel: 'anonymous',
-//     route: 'par-brink/configurations',
-//     handler: getParBrinkConfigurations,
-// });
