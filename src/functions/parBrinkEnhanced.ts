@@ -1,7 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import * as soap from "soap";
 
 // Production-ready PAR Brink API integration
-// No simulated data - real SOAP API integration only
+// Real SOAP API integration with PAR Brink Labor2.svc
 
 export interface ParBrinkEmployee {
     EmployeeId: string;
@@ -32,19 +33,75 @@ export interface ParBrinkSales {
     EmployeeId?: string;
 }
 
-// Real SOAP API call function - requires proper PAR Brink configuration
+// Real SOAP API call function - PAR Brink Labor2.svc integration
 async function callParBrinkSoapAPI(
     _endpoint: string,
     action: string,
-    _soapBody: string
+    soapBody: string,
+    accessToken?: string,
+    locationToken?: string
 ): Promise<any> {
-    // TODO: Implement actual SOAP client integration
-    // This requires PAR Brink WSDL configuration and authentication
-    throw new Error(`PAR Brink SOAP API integration not yet implemented for ${action}. Real API connection required.`);
+    try {
+        // PAR Brink WSDL URL (update with actual PAR Brink server URL)
+        const wsdlUrl = process.env.PAR_BRINK_WSDL_URL || `https://your-par-brink-server.com/Labor2.svc?wsdl`;
+        
+        // Create SOAP client
+        const client = await soap.createClientAsync(wsdlUrl, {
+            // PAR Brink SOAP client options
+            forceSoap12Headers: true, // Use SOAP 1.2
+        });
+
+        // Set authentication headers if provided
+        if (accessToken) {
+            client.addHttpHeader('Authorization', `Bearer ${accessToken}`);
+        }
+        
+        if (locationToken) {
+            client.addHttpHeader('X-Location-Token', locationToken);
+        }
+
+        // Log the SOAP request for debugging
+        console.log(`PAR Brink SOAP ${action} request:`, soapBody);
+
+        // Make the SOAP call based on action
+        let result;
+        switch (action) {
+            case 'GetShifts':
+                result = await client.GetShiftsAsync(soapBody);
+                break;
+            case 'GetEmployees':
+                result = await client.GetEmployeesAsync(soapBody);
+                break;
+            case 'GetSales':
+                result = await client.GetSalesAsync(soapBody);
+                break;
+            default:
+                throw new Error(`Unsupported PAR Brink action: ${action}`);
+        }
+
+        console.log(`PAR Brink SOAP ${action} response:`, JSON.stringify(result, null, 2));
+        return result[0]; // SOAP client returns [result, rawResponse]
+        
+    } catch (error) {
+        // Enhanced error handling for PAR Brink connection issues
+        const errorMessage = error instanceof Error ? error.message : 'Unknown SOAP error';
+        console.error(`PAR Brink SOAP ${action} error:`, errorMessage);
+        
+        // Check for common PAR Brink connection issues
+        if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('timeout')) {
+            throw new Error(`PAR Brink server unreachable. Please check server URL and network connectivity.`);
+        } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+            throw new Error(`PAR Brink authentication failed. Please check access token and credentials.`);
+        } else if (errorMessage.includes('WSDL')) {
+            throw new Error(`PAR Brink WSDL not found. Please verify WSDL URL: ${process.env.PAR_BRINK_WSDL_URL}`);
+        }
+        
+        throw new Error(`PAR Brink ${action} failed: ${errorMessage}`);
+    }
 }
 
 // Get current clocked-in employees from PAR Brink
-async function getParBrinkClockedInEmployees(): Promise<ParBrinkShift[]> {
+async function getParBrinkClockedInEmployees(accessToken?: string, locationToken?: string, businessDate?: string): Promise<ParBrinkShift[]> {
     try {
         const soapBody = `
             <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
@@ -53,14 +110,28 @@ async function getParBrinkClockedInEmployees(): Promise<ParBrinkShift[]> {
                     <GetShifts xmlns="http://parbrink.com/labor">
                         <request>
                             <Status>clocked-in</Status>
+                            <BusinessDate>${businessDate || new Date().toISOString().split('T')[0]}</BusinessDate>
+                            ${locationToken ? `<LocationToken>${locationToken}</LocationToken>` : ''}
                         </request>
                     </GetShifts>
                 </soap:Body>
             </soap:Envelope>
         `;
         
-        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetShifts', soapBody);
-        return result.shifts || [];
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetShifts', soapBody, accessToken, locationToken);
+        
+        // Transform PAR Brink response to our interface
+        const shifts = result?.GetShiftsResult?.Shifts || result?.shifts || [];
+        return shifts.map((shift: any) => ({
+            ShiftId: shift.ShiftId || shift.Id || `shift-${shift.EmployeeId}-${Date.now()}`,
+            EmployeeId: shift.EmployeeId || shift.Employee?.Id || '',
+            StartTime: shift.StartTime || shift.ClockInTime || '',
+            EndTime: shift.EndTime || shift.ClockOutTime || null,
+            JobId: shift.JobId || shift.Job?.Id || '',
+            JobName: shift.JobName || shift.Job?.Name || '',
+            Hours: shift.Hours || 0,
+            Status: shift.Status || (shift.EndTime ? 'clocked-out' : 'clocked-in')
+        }));
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new Error(`Failed to fetch clocked-in employees: ${errorMessage}`);
@@ -68,7 +139,7 @@ async function getParBrinkClockedInEmployees(): Promise<ParBrinkShift[]> {
 }
 
 // Get employee data from PAR Brink
-async function getParBrinkEmployees(): Promise<ParBrinkEmployee[]> {
+async function getParBrinkEmployees(accessToken?: string, locationToken?: string): Promise<ParBrinkEmployee[]> {
     try {
         const soapBody = `
             <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
@@ -77,14 +148,25 @@ async function getParBrinkEmployees(): Promise<ParBrinkEmployee[]> {
                     <GetEmployees xmlns="http://parbrink.com/labor">
                         <request>
                             <Active>true</Active>
+                            ${locationToken ? `<LocationToken>${locationToken}</LocationToken>` : ''}
                         </request>
                     </GetEmployees>
                 </soap:Body>
             </soap:Envelope>
         `;
         
-        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetEmployees', soapBody);
-        return result.employees || [];
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetEmployees', soapBody, accessToken, locationToken);
+        
+        // Transform PAR Brink response to our interface
+        const employees = result?.GetEmployeesResult?.Employees || result?.employees || [];
+        return employees.map((emp: any) => ({
+            EmployeeId: emp.EmployeeId || emp.Id || '',
+            FirstName: emp.FirstName || emp.Name?.First || '',
+            LastName: emp.LastName || emp.Name?.Last || '',
+            Status: emp.Status || emp.Active ? 'active' : 'inactive',
+            Position: emp.Position || emp.JobTitle || '',
+            HourlyRate: emp.HourlyRate || emp.Rate || 0
+        }));
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new Error(`Failed to fetch employees: ${errorMessage}`);
@@ -92,7 +174,7 @@ async function getParBrinkEmployees(): Promise<ParBrinkEmployee[]> {
 }
 
 // Get sales data from PAR Brink
-async function getParBrinkSales(startDate?: string, endDate?: string): Promise<ParBrinkSales[]> {
+async function getParBrinkSales(startDate?: string, endDate?: string, accessToken?: string, locationToken?: string): Promise<ParBrinkSales[]> {
     try {
         const soapBody = `
             <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
@@ -102,14 +184,25 @@ async function getParBrinkSales(startDate?: string, endDate?: string): Promise<P
                         <request>
                             <StartDate>${startDate || new Date().toISOString().split('T')[0]}</StartDate>
                             <EndDate>${endDate || new Date().toISOString().split('T')[0]}</EndDate>
+                            ${locationToken ? `<LocationToken>${locationToken}</LocationToken>` : ''}
                         </request>
                     </GetSales>
                 </soap:Body>
             </soap:Envelope>
         `;
         
-        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetSales', soapBody);
-        return result.sales || [];
+        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetSales', soapBody, accessToken, locationToken);
+        
+        // Transform PAR Brink response to our interface
+        const sales = result?.GetSalesResult?.Sales || result?.sales || [];
+        return sales.map((sale: any) => ({
+            SaleId: sale.SaleId || sale.Id || `sale-${Date.now()}`,
+            Amount: sale.Amount || sale.Total || 0,
+            Timestamp: sale.Timestamp || sale.DateTime || new Date().toISOString(),
+            ItemCount: sale.ItemCount || sale.Items?.length || 0,
+            PaymentMethod: sale.PaymentMethod || sale.Payment?.Method || '',
+            EmployeeId: sale.EmployeeId || sale.Employee?.Id || ''
+        }));
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new Error(`Failed to fetch sales data: ${errorMessage}`);
@@ -138,7 +231,7 @@ export async function laborShifts(request: HttpRequest, context: InvocationConte
         
         context.log('Request params:', { accessToken: !!accessToken, locationToken: !!locationToken, businessDate });
         
-        const shifts = await getParBrinkClockedInEmployees();
+        const shifts = await getParBrinkClockedInEmployees(accessToken, locationToken, businessDate);
         
         return {
             status: 200,
@@ -192,7 +285,7 @@ export async function employees(request: HttpRequest, context: InvocationContext
             }
         }
         
-        const employeeData = await getParBrinkEmployees();
+        const employeeData = await getParBrinkEmployees(requestData?.accessToken, requestData?.locationToken);
         
         return {
             status: 200,
@@ -234,7 +327,7 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
     try {
         context.log('PAR Brink sales endpoint called');
         
-        let startDate, endDate;
+        let startDate, endDate, accessToken, locationToken;
         
         // Handle both GET and POST requests
         if (request.method === 'POST') {
@@ -243,6 +336,8 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
                 const requestData = JSON.parse(body);
                 startDate = requestData.startDate;
                 endDate = requestData.endDate;
+                accessToken = requestData.accessToken;
+                locationToken = requestData.locationToken;
                 context.log('Request data:', requestData);
             } catch (parseError) {
                 context.log('Error parsing request body:', parseError);
@@ -253,7 +348,7 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
             endDate = url.searchParams.get('endDate') || undefined;
         }
         
-        const salesData = await getParBrinkSales(startDate, endDate);
+        const salesData = await getParBrinkSales(startDate, endDate, accessToken, locationToken);
         
         return {
             status: 200,

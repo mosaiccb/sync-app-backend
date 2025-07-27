@@ -19,10 +19,12 @@
     "@azure/identity": "^4.0.0",
     "@azure/keyvault-secrets": "^4.7.0",
     "@types/mssql": "^9.1.7",
+    "@types/soap": "^0.18.0",
     "axios": "^1.10.0",
     "dotenv": "^17.2.0",
     "mssql": "^11.0.1",
     "node-cache": "^5.1.2",
+    "soap": "^1.2.1",
     "uuid": "^9.0.0",
     "zod": "^3.22.0"
   },
