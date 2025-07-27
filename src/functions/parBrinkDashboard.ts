@@ -1,13 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import axios from 'axios';
 
-interface SalesOrderEntry {
-  ItemId: string;
-  Price: number;
-  Description: string;
-  DayPartId: number;
-}
-
 interface SalesOrder {
   Id: string;
   Name: string;
@@ -19,10 +12,6 @@ interface SalesOrder {
   };
   modifiedtime?: {
     DateTime?: string;
-  };
-  BusinessDate: string;
-  entries?: {
-    orderentry?: SalesOrderEntry[] | SalesOrderEntry;
   };
 }
 
@@ -419,17 +408,6 @@ function getLocationMapping(): { [token: string]: { name: string; id: string; ti
   };
 }
 
-function getCurrentMountainTime(includeTime: boolean = false): string {
-  const now = new Date();
-  const mountainTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Denver" }));
-  
-  if (includeTime) {
-    return mountainTime.toISOString().slice(0, 19);
-  }
-  
-  return mountainTime.toISOString().slice(0, 10);
-}
-
 function getCurrentLocalTime(timezone: string, includeTime: boolean = false): string {
   const now = new Date();
   const localTime = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
@@ -439,23 +417,6 @@ function getCurrentLocalTime(timezone: string, includeTime: boolean = false): st
   }
   
   return localTime.toISOString().slice(0, 10);
-}
-
-function getRestaurantBusinessDate(): string {
-  // For restaurants, the business day typically runs from early morning (5-6 AM) 
-  // until late night/early morning (2-3 AM next day)
-  // If it's after midnight but before 5 AM, use the previous calendar day as business date
-  const now = new Date();
-  const mountainTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Denver" }));
-  
-  // If it's between midnight and 5 AM Mountain Time, subtract a day for business date
-  if (mountainTime.getHours() < 5) {
-    const businessDate = new Date(mountainTime);
-    businessDate.setDate(businessDate.getDate() - 1);
-    return businessDate.toISOString().slice(0, 10);
-  }
-  
-  return mountainTime.toISOString().slice(0, 10);
 }
 
 function getRestaurantBusinessDateForTimezone(timezone: string): string {
@@ -475,48 +436,10 @@ function getRestaurantBusinessDateForTimezone(timezone: string): string {
   return localTime.toISOString().slice(0, 10);
 }
 
-function convertToMountainTime(dateString: string): string {
-  const date = new Date(dateString);
-  const mountainTime = new Date(date.toLocaleString("en-US", { timeZone: "America/Denver" }));
-  return mountainTime.toISOString().slice(0, 10);
-}
-
 function convertToLocalTime(dateString: string, timezone: string): string {
   const date = new Date(dateString);
   const localTime = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
   return localTime.toISOString().slice(0, 10);
-}
-
-function getMountainTimeOffset(date?: Date): number {
-  // Use provided date or current date
-  const checkDate = date || new Date();
-  
-  // Create the same moment in both UTC and Mountain Time
-  const utcTime = new Date(checkDate.toISOString());
-  const mountainTimeString = checkDate.toLocaleString("en-US", { 
-    timeZone: "America/Denver",
-    year: 'numeric',
-    month: '2-digit', 
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-  
-  // Parse Mountain Time string back to Date (interpreting as UTC to get the offset)
-  const [datePart, timePart] = mountainTimeString.split(', ');
-  const [month, day, year] = datePart.split('/');
-  const [hour, minute, second] = timePart.split(':');
-  const mountainAsUTC = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour}:${minute}:${second}Z`);
-  
-  // Calculate the offset in minutes
-  // Mountain Time is behind UTC, so offset should be negative
-  const offsetMinutes = (mountainAsUTC.getTime() - utcTime.getTime()) / (1000 * 60);
-  
-  // For July in Colorado (MDT), this should return -360
-  // For January in Colorado (MST), this should return -420
-  return Math.round(offsetMinutes);
 }
 
 function getTimezoneOffset(timezone: string, date?: Date): number {
