@@ -215,7 +215,7 @@ try {
             if ($AutoCommit) {
                 Write-Host "`n� Auto-committing changes..." -ForegroundColor Cyan
                 try {
-                    git add .
+                    git add -A
                     git commit -m "$CommitMessage"
                     Write-Host "✅ Changes committed successfully" -ForegroundColor Green
                 }
@@ -275,6 +275,16 @@ elseif ($EnableRunFromPackage) {
 else {
     Write-Host "⏭️  Skipping build (-SkipBuild specified)" -ForegroundColor Yellow
 }
+
+# Pause for manual VS Code right-click deployment
+Write-Host "`n⏸️  PAUSE: Ready for VS Code right-click deployment" -ForegroundColor Magenta
+Write-Host "🔧 1. Right-click on the sync-app-backend folder in VS Code" -ForegroundColor Cyan
+Write-Host "🔧 2. Select 'Deploy to Function App...'" -ForegroundColor Cyan
+Write-Host "🔧 3. Choose your Function App and deploy" -ForegroundColor Cyan
+Write-Host "🔧 4. Wait for deployment to complete" -ForegroundColor Cyan
+Write-Host "⏳ Press any key to continue after deployment is complete..." -ForegroundColor Yellow
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+Write-Host "✅ Continuing script execution..." -ForegroundColor Green
 
 # Method 1: Try Azure Functions Core Tools deployment
 Write-Host "`n🚀 Attempting deployment with Azure Functions Core Tools..." -ForegroundColor Cyan
