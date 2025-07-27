@@ -446,12 +446,11 @@ function getTimezoneOffset(timezone: string, date?: Date): number {
   // Use provided date or current date
   const checkDate = date || new Date();
   
-  // Create the same moment in both UTC and the specified timezone
-  const utcTime = new Date(checkDate.toISOString());
-  const localTimeString = checkDate.toLocaleString("en-US", { 
+  // Create a date formatter for the target timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     year: 'numeric',
-    month: '2-digit', 
+    month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
@@ -459,15 +458,27 @@ function getTimezoneOffset(timezone: string, date?: Date): number {
     hour12: false
   });
   
-  // Parse local timezone string back to Date (interpreting as UTC to get the offset)
-  const [datePart, timePart] = localTimeString.split(', ');
-  const [month, day, year] = datePart.split('/');
-  const [hour, minute, second] = timePart.split(':');
-  const localAsUTC = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour}:${minute}:${second}Z`);
+  // Get the date parts for the target timezone
+  const parts = formatter.formatToParts(checkDate);
+  const partsMap: {[key: string]: string} = {};
+  parts.forEach(part => {
+    partsMap[part.type] = part.value;
+  });
+  
+  // Create a new date object representing the local time as if it were UTC
+  const localAsUTC = new Date(
+    `${partsMap.year}-${partsMap.month}-${partsMap.day}T${partsMap.hour}:${partsMap.minute}:${partsMap.second}Z`
+  );
   
   // Calculate the offset in minutes
-  // Timezone behind UTC = negative offset, ahead of UTC = positive offset
-  const offsetMinutes = (localAsUTC.getTime() - utcTime.getTime()) / (1000 * 60);
+  const offsetMinutes = (localAsUTC.getTime() - checkDate.getTime()) / (1000 * 60);
+  
+  // For debugging: log the calculation
+  console.log(`Timezone offset calculation for ${timezone}:`);
+  console.log(`  Input UTC date: ${checkDate.toISOString()}`);
+  console.log(`  Local time formatted: ${partsMap.year}-${partsMap.month}-${partsMap.day}T${partsMap.hour}:${partsMap.minute}:${partsMap.second}`);
+  console.log(`  Local as UTC: ${localAsUTC.toISOString()}`);
+  console.log(`  Calculated offset: ${Math.round(offsetMinutes)} minutes`);
   
   return Math.round(offsetMinutes);
 }
