@@ -14,11 +14,11 @@
 #   • Subscription: 3a09f19f-d0c3-4a11-ac2c-6d869a76ec94
 #
 # Usage Examples:
-#   .\deploy.ps1                                        # Basic deployment with hardcoded settings
-#   .\deploy.ps1 -AutoCommit                           # Auto-commit with tracking message
+#   .\deploy.ps1                                        # Basic deployment with auto-commit enabled
+#   .\deploy.ps1 -AutoCommit:$false                    # Disable auto-commit
 #   .\deploy.ps1 -SkipBuild                            # Skip npm build step
 #   .\deploy.ps1 -EnableRunFromPackage                 # Enable server-side build for ZIP deployment
-#   .\deploy.ps1 -AutoCommit -CommitMessage "Fix API"  # Custom commit message
+#   .\deploy.ps1 -CommitMessage "Fix API"              # Custom commit message
 #   .\deploy.ps1 -VerboseOutput                        # Verbose output
 #   .\deploy.ps1 -FunctionAppName "other-app"          # Override function app name
 
@@ -47,6 +47,11 @@ param(
     [Parameter(Mandatory = $false)]
     [switch]$EnableRunFromPackage
 )
+
+# Set AutoCommit to true by default (user can override with -AutoCommit:$false)
+if (-not $PSBoundParameters.ContainsKey('AutoCommit')) {
+    $AutoCommit = $true
+}
 
 Write-Host "🚀 Starting Azure Functions Deployment" -ForegroundColor Green
 Write-Host "📅 Deployment initiated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
@@ -213,18 +218,25 @@ try {
             }
             
             if ($AutoCommit) {
-                Write-Host "`n� Auto-committing changes..." -ForegroundColor Cyan
+                Write-Host "`n🔄 Auto-committing changes..." -ForegroundColor Cyan
                 try {
                     git add -A
                     git commit -m "$CommitMessage"
                     Write-Host "✅ Changes committed successfully" -ForegroundColor Green
+                    
+                    # Show the commit hash
+                    $commitHash = git rev-parse HEAD 2>$null
+                    if ($commitHash) {
+                        Write-Host "📍 Commit hash: $($commitHash.Substring(0,8))" -ForegroundColor DarkGray
+                    }
                 }
                 catch {
-                    Write-Host "⚠️  Auto-commit failed, but deployment will continue" -ForegroundColor Yellow
+                    Write-Host "⚠️  Auto-commit failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    Write-Host "💡 Deployment will continue, but consider committing manually" -ForegroundColor DarkGray
                 }
             }
             else {
-                Write-Host "�� No worries! This deployment will work WITHOUT commits!" -ForegroundColor Green
+                Write-Host "💡 No worries! This deployment will work WITHOUT commits!" -ForegroundColor Green
                 Write-Host "💡 Unlike VS Code right-click, this script bypasses Git requirements" -ForegroundColor Cyan
                 Write-Host "💡 Use -AutoCommit to automatically commit changes before deployment" -ForegroundColor DarkGray
             }
@@ -286,174 +298,42 @@ Write-Host "⏳ Press any key to continue after deployment is complete..." -Fore
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 Write-Host "✅ Continuing script execution..." -ForegroundColor Green
 
-# Method 1: Try Azure Functions Core Tools deployment
-Write-Host "`n🚀 Attempting deployment with Azure Functions Core Tools..." -ForegroundColor Cyan
+# Test the deployment
+Write-Host "`n🧪 Testing deployment..." -ForegroundColor Cyan
+Start-Sleep -Seconds 5
 
-# Disable WEBSITE_RUN_FROM_PACKAGE for func publish (works better with pre-built files)
-if (-not $EnableRunFromPackage) {
-    Write-Host "🔧 Checking WEBSITE_RUN_FROM_PACKAGE setting..." -ForegroundColor Cyan
-    try {
-        $currentSettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-        if ($currentSettings -eq "1") {
-            Write-Host "🔄 Disabling WEBSITE_RUN_FROM_PACKAGE (will trigger app restart)..." -ForegroundColor Yellow
-            az functionapp config appsettings set --resource-group $ResourceGroup --name $FunctionAppName --settings WEBSITE_RUN_FROM_PACKAGE="0" --output none
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE disabled - using pre-built files" -ForegroundColor Green
-            Write-Host "⏳ Waiting for Azure infrastructure to propagate changes..." -ForegroundColor DarkGray
-            Write-Host "   🔄 30 seconds for setting propagation + app restart..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds 30
-            
-            # Verify the setting took effect
-            Write-Host "   🔍 Verifying setting propagation..." -ForegroundColor DarkGray
-            $verifySettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-            if ($verifySettings -eq "0" -or [string]::IsNullOrEmpty($verifySettings)) {
-                Write-Host "   ✅ Verified: WEBSITE_RUN_FROM_PACKAGE is disabled" -ForegroundColor Green
-            }
-            else {
-                Write-Host "   ⚠️  Setting may not have propagated yet (current: $verifySettings)" -ForegroundColor Yellow
-            }
-            
-            Write-Host "   ✅ Wait completed - deployment should now use correct mode" -ForegroundColor Green
-        }
-        elseif ($currentSettings -eq "0" -or [string]::IsNullOrEmpty($currentSettings)) {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE already disabled" -ForegroundColor Green
-        }
-        else {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE current value: $currentSettings" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Host "⚠️  Failed to check/set WEBSITE_RUN_FROM_PACKAGE, continuing anyway..." -ForegroundColor Yellow
-    }
-}
-
+$healthUrl = "https://$FunctionAppName.azurewebsites.net/api/health"
 try {
-    if ($VerboseOutput) {
-        func azure functionapp publish $FunctionAppName --verbose
-    }
-    else {
-        func azure functionapp publish $FunctionAppName
-    }
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ Deployment successful with func publish!" -ForegroundColor Green
-        
-        # Test the deployment
-        Write-Host "`n🧪 Testing deployment..." -ForegroundColor Cyan
-        Start-Sleep -Seconds 5
-        
-        $healthUrl = "https://$FunctionAppName.azurewebsites.net/api/health"
-        try {
-            $response = Invoke-RestMethod -Uri $healthUrl -Method GET -TimeoutSec 10
-            Write-Host "✅ Health check passed" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "⚠️  Health check failed, but deployment may still be successful" -ForegroundColor Yellow
-            Write-Host "URL: $healthUrl" -ForegroundColor Yellow
-        }
-        
-        Write-Host "`n🎉 Deployment completed successfully!" -ForegroundColor Green
-        Write-Host "🌐 Function App URL: https://$FunctionAppName.azurewebsites.net" -ForegroundColor Cyan
-        Write-Host "🔍 Admin Functions: https://$FunctionAppName.azurewebsites.net/admin/functions" -ForegroundColor Cyan
-        
-        exit 0
-    }
+    $response = Invoke-RestMethod -Uri $healthUrl -Method GET -TimeoutSec 10
+    Write-Host "✅ Health check passed" -ForegroundColor Green
+    Write-Host "Response: $($response | ConvertTo-Json -Compress)" -ForegroundColor DarkGray
 }
 catch {
-    Write-Host "⚠️  func publish failed, trying ZIP deployment method..." -ForegroundColor Yellow
+    Write-Host "⚠️  Health check failed" -ForegroundColor Yellow
+    Write-Host "URL: $healthUrl" -ForegroundColor Yellow
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
 }
 
-# Method 2: ZIP deployment fallback
-Write-Host "`n📦 Attempting ZIP deployment..." -ForegroundColor Cyan
-
-# Enable WEBSITE_RUN_FROM_PACKAGE if requested
-if ($EnableRunFromPackage) {
-    Write-Host "🔧 Checking WEBSITE_RUN_FROM_PACKAGE setting..." -ForegroundColor Cyan
-    try {
-        $currentSettings = az functionapp config appsettings list --resource-group $ResourceGroup --name $FunctionAppName --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" --output tsv 2>$null
-        if ($currentSettings -ne "1") {
-            Write-Host "🔄 Enabling WEBSITE_RUN_FROM_PACKAGE (will trigger app restart)..." -ForegroundColor Yellow
-            az functionapp config appsettings set --resource-group $ResourceGroup --name $FunctionAppName --settings WEBSITE_RUN_FROM_PACKAGE="1" --output none
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE enabled - Azure will build TypeScript on server" -ForegroundColor Green
-            Write-Host "⏳ Waiting for Azure infrastructure to propagate changes..." -ForegroundColor DarkGray
-            Write-Host "   🔄 30 seconds for setting propagation + app restart..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds 30
-            Write-Host "   ✅ Wait completed - deployment should now use server-side build" -ForegroundColor Green
-        }
-        else {
-            Write-Host "✅ WEBSITE_RUN_FROM_PACKAGE already enabled" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Host "⚠️  Failed to check/set WEBSITE_RUN_FROM_PACKAGE, continuing anyway..." -ForegroundColor Yellow
-    }
-}
-
+# Test dashboard endpoint
+$dashboardUrl = "https://$FunctionAppName.azurewebsites.net/api/par-brink/dashboard"
+Write-Host "`n🧪 Testing dashboard endpoint..." -ForegroundColor Cyan
 try {
-    # Create deployment package
-    $deploymentZip = "deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').zip"
-    Write-Host "Creating deployment package: $deploymentZip" -ForegroundColor Yellow
+    $testPayload = @{
+        locationId = "1"
+        businessDate = "2025-07-27"
+    } | ConvertTo-Json
     
-    # Compress the files (excluding node_modules, .git, etc.)
-    $excludePatterns = @("node_modules", ".git", "*.zip", "deployment*.zip", ".vscode", "*.log")
-    
-    # Use PowerShell compression
-    $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    
-    # Get all files except excluded patterns
-    $filesToZip = Get-ChildItem -Recurse | Where-Object {
-        $file = $_
-        $shouldExclude = $false
-        foreach ($pattern in $excludePatterns) {
-            if ($file.FullName -like "*$pattern*") {
-                $shouldExclude = $true
-                break
-            }
-        }
-        -not $shouldExclude
-    }
-    
-    Write-Host "Compressing $($filesToZip.Count) files..." -ForegroundColor Yellow
-    Compress-Archive -Path $filesToZip -DestinationPath $deploymentZip -CompressionLevel $compressionLevel
-    
-    # Deploy via Azure CLI
-    Write-Host "Uploading to Azure..." -ForegroundColor Yellow
-    az functionapp deployment source config-zip --resource-group $ResourceGroup --name $FunctionAppName --src $deploymentZip
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ ZIP deployment successful!" -ForegroundColor Green
-        
-        # Cleanup
-        Remove-Item $deploymentZip -Force
-        
-        # Test the deployment
-        Write-Host "`n🧪 Testing deployment..." -ForegroundColor Cyan
-        Start-Sleep -Seconds 10
-        
-        $healthUrl = "https://$FunctionAppName.azurewebsites.net/api/health"
-        try {
-            $response = Invoke-RestMethod -Uri $healthUrl -Method GET -TimeoutSec 15
-            Write-Host "✅ Health check passed" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "⚠️  Health check failed, but deployment may still be successful" -ForegroundColor Yellow
-            Write-Host "URL: $healthUrl" -ForegroundColor Yellow
-        }
-        
-        Write-Host "`n🎉 ZIP Deployment completed successfully!" -ForegroundColor Green
-        Write-Host "🌐 Function App URL: https://$FunctionAppName.azurewebsites.net" -ForegroundColor Cyan
-        Write-Host "🔍 Admin Functions: https://$FunctionAppName.azurewebsites.net/admin/functions" -ForegroundColor Cyan
-        
-    }
-    else {
-        Write-Host "❌ ZIP deployment failed" -ForegroundColor Red
-        exit 1
-    }
-    
+    $dashboardResponse = Invoke-RestMethod -Uri $dashboardUrl -Method POST -Body $testPayload -ContentType "application/json" -TimeoutSec 15
+    Write-Host "✅ Dashboard endpoint working!" -ForegroundColor Green
+    Write-Host "Response structure: $($dashboardResponse.GetType().Name)" -ForegroundColor DarkGray
 }
 catch {
-    Write-Host "❌ ZIP deployment failed: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+    Write-Host "⚠️  Dashboard endpoint test failed" -ForegroundColor Yellow
+    Write-Host "URL: $dashboardUrl" -ForegroundColor Yellow
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
 }
 
-Write-Host "`n✨ All deployment methods completed!" -ForegroundColor Green
+Write-Host "`n🎉 Deployment testing completed!" -ForegroundColor Green
+Write-Host "🌐 Function App URL: https://$FunctionAppName.azurewebsites.net" -ForegroundColor Cyan
+
+Write-Host "`n✨ Script execution completed!" -ForegroundColor Green
