@@ -72,9 +72,11 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
 
     const responseData = {
       success: true,
-      accessToken: config.accessToken, // Frontend needs this for API calls
-      locations: sanitizedLocations,
-      totalLocations: sanitizedLocations.length
+      data: {
+        accessToken: config.accessToken, // Frontend needs this for API calls
+        locations: sanitizedLocations,
+        totalLocations: sanitizedLocations.length
+      }
     };
 
     context.log(`Returning ${sanitizedLocations.length} active PAR Brink locations`);
