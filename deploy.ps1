@@ -331,7 +331,7 @@ $dashboardUrl = "https://$FunctionAppName.azurewebsites.net/api/par-brink/dashbo
 Write-Host "`n🧪 Testing dashboard endpoint..." -ForegroundColor Cyan
 try {
     $testPayload = @{
-        locationId = "1"
+        locationId = "109"
         businessDate = "2025-07-27"
     } | ConvertTo-Json
     
