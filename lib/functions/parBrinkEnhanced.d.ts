@@ -25,7 +25,7 @@ export interface ParBrinkSales {
     PaymentMethod?: string;
     EmployeeId?: string;
 }
-export declare function laborShifts(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
-export declare function employees(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
+export declare function laborShifts(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
+export declare function employees(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 export declare function sales(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 //# sourceMappingURL=parBrinkEnhanced.d.ts.map

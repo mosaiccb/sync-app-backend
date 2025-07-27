@@ -117,9 +117,26 @@ async function getParBrinkSales(startDate?: string, endDate?: string): Promise<P
 }
 
 // Labor shifts endpoint - real PAR Brink integration
-export async function laborShifts(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+export async function laborShifts(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     try {
         context.log('PAR Brink labor-shifts endpoint called');
+        
+        // Handle both GET and POST requests
+        let accessToken, locationToken, businessDate;
+        
+        if (request.method === 'POST') {
+            try {
+                const body = await request.text();
+                const requestData = JSON.parse(body);
+                accessToken = requestData.accessToken;
+                locationToken = requestData.locationToken;
+                businessDate = requestData.businessDate;
+            } catch (parseError) {
+                context.log('Error parsing request body:', parseError);
+            }
+        }
+        
+        context.log('Request params:', { accessToken: !!accessToken, locationToken: !!locationToken, businessDate });
         
         const shifts = await getParBrinkClockedInEmployees();
         
@@ -159,9 +176,21 @@ export async function laborShifts(_request: HttpRequest, context: InvocationCont
 }
 
 // Employees endpoint - real PAR Brink integration
-export async function employees(_request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+export async function employees(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     try {
         context.log('PAR Brink employees endpoint called');
+        
+        // Handle both GET and POST requests
+        let requestData;
+        if (request.method === 'POST') {
+            try {
+                const body = await request.text();
+                requestData = JSON.parse(body);
+                context.log('Request data:', requestData);
+            } catch (parseError) {
+                context.log('Error parsing request body:', parseError);
+            }
+        }
         
         const employeeData = await getParBrinkEmployees();
         
@@ -205,9 +234,24 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
     try {
         context.log('PAR Brink sales endpoint called');
         
-        const url = new URL(request.url);
-        const startDate = url.searchParams.get('startDate') || undefined;
-        const endDate = url.searchParams.get('endDate') || undefined;
+        let startDate, endDate;
+        
+        // Handle both GET and POST requests
+        if (request.method === 'POST') {
+            try {
+                const body = await request.text();
+                const requestData = JSON.parse(body);
+                startDate = requestData.startDate;
+                endDate = requestData.endDate;
+                context.log('Request data:', requestData);
+            } catch (parseError) {
+                context.log('Error parsing request body:', parseError);
+            }
+        } else {
+            const url = new URL(request.url);
+            startDate = url.searchParams.get('startDate') || undefined;
+            endDate = url.searchParams.get('endDate') || undefined;
+        }
         
         const salesData = await getParBrinkSales(startDate, endDate);
         
@@ -246,21 +290,24 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
     }
 }
 
-// Register the function endpoints
-app.http('labor-shifts', {
-    methods: ['GET', 'OPTIONS'],
+// Register the function endpoints - matching frontend API expectations
+app.http('par-brink-labor-shifts', {
+    methods: ['GET', 'POST', 'OPTIONS'],
     authLevel: 'anonymous',
+    route: 'par-brink/labor-shifts',
     handler: laborShifts
 });
 
-app.http('employees', {
-    methods: ['GET', 'OPTIONS'],
+app.http('par-brink-employees', {
+    methods: ['GET', 'POST', 'OPTIONS'],
     authLevel: 'anonymous',
+    route: 'par-brink/employees',
     handler: employees
 });
 
-app.http('sales', {
-    methods: ['GET', 'OPTIONS'],
+app.http('par-brink-sales', {
+    methods: ['GET', 'POST', 'OPTIONS'],
     authLevel: 'anonymous',
+    route: 'par-brink/sales',
     handler: sales
 });
