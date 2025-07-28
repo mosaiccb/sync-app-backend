@@ -17,6 +17,7 @@ A robust Azure Functions backend for restaurant operations management with PAR B
 - **Timezone Handling**: Real-time calculation with DST support via WorldTimeAPI
 - **Location Management**: 22 Colorado restaurant locations with encrypted tokens
 - **Data Integration**: Combines PAR Brink sales with UKG labor for operational dashboards
+- **Tips Tracking**: Comprehensive tip extraction from payment transactions and till operations
 
 ## 📋 Prerequisites
 
@@ -77,7 +78,41 @@ npm start
 - `npm run test:db` - Test database connection
 - `npm run deploy:schema` - Show schema deployment instructions
 
-## 📊 Database Schema
+## � Tips Dashboard Integration
+
+### PAR Brink Tips Extraction
+
+The tips functionality extracts comprehensive tip data from PAR Brink POS systems:
+
+**Credit Card Tips**: Extracted from GetOrders API response
+
+```xml
+<Payment>
+  <TipAmount>5.00</TipAmount>
+  <Amount>25.00</Amount>
+  <PaymentType>Credit Card</PaymentType>
+</Payment>
+```
+
+**Cash Tips**: Extracted from GetTills API response
+
+```xml
+<PaidInOut>
+  <Amount>8.50</Amount>
+  <AccountType>0</AccountType>  <!-- Cash tips -->
+  <Description>Cash Tip</Description>
+</PaidInOut>
+```
+
+### Implementation Details
+
+- **Dual API Integration**: Uses both GetOrders and GetTills endpoints
+- **XML Parsing**: Enhanced parsing to extract TipAmount fields at payment and detail levels
+- **Business Date Logic**: Respects restaurant business day (5 AM cutoff)
+- **Real-time Data**: Live tip tracking throughout business operations
+- **Configuration Reuse**: Leverages existing PAR Brink authentication and setup
+
+## �📊 Database Schema
 
 ### Tenants
 
@@ -112,6 +147,7 @@ npm start
 - `GET /api/par-brink/sales` - PAR Brink sales data retrieval
 - `GET /api/par-brink/employees` - Employee management data
 - `GET /api/par-brink/labor-shifts` - Labor shift information
+- `POST /api/par-brink/tips` - Credit card and cash tip tracking
 
 ### Restaurant Management
 
