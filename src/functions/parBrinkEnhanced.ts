@@ -186,22 +186,37 @@ async function callParBrinkSoapAPI(
             
             if (action === 'GetOrders') {
                 const orders: any[] = [];
-                const orderMatches = responseText.match(/<order>[\s\S]*?<\/order>/g) || [];
+                // Fix: Use uppercase Order tags to match actual PAR Brink XML response
+                const orderMatches = responseText.match(/<Order>[\s\S]*?<\/Order>/g) || [];
                 
-                orderMatches.forEach(orderXml => {
-                    const orderId = orderXml.match(/<OrderId>([^<]+)<\/OrderId>/)?.[1];
+                console.log(`Found ${orderMatches.length} Order elements in XML response`);
+                
+                orderMatches.forEach((orderXml, index) => {
+                    // Use proper field names from PAR Brink XML - Id not OrderId, Total is correct
+                    const orderId = orderXml.match(/<Id>([^<]+)<\/Id>/)?.[1];
                     const total = orderXml.match(/<Total>([^<]+)<\/Total>/)?.[1];
                     const businessDate = orderXml.match(/<BusinessDate>([^<]+)<\/BusinessDate>/)?.[1];
+                    const orderNumber = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
+                    const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
                     
-                    if (orderId) {
+                    console.log(`Order ${index + 1}: Id=${orderId}, Number=${orderNumber}, Total=${total}, Name=${name}`);
+                    
+                    // Include orders with valid ID and non-zero totals (exclude test/incomplete orders)
+                    if (orderId && total && parseFloat(total) > 0) {
                         orders.push({
                             OrderId: orderId,
-                            Total: parseFloat(total || '0'),
-                            BusinessDate: businessDate
+                            Total: parseFloat(total),
+                            BusinessDate: businessDate,
+                            Number: orderNumber,
+                            Name: name
                         });
+                        console.log(`Added order ${index + 1} to results`);
+                    } else {
+                        console.log(`Skipped order ${index + 1}: missing required fields or zero total`);
                     }
                 });
                 
+                console.log(`Parsed ${orders.length} valid orders from PAR Brink XML response`);
                 return { Orders: { order: orders } };
             }
             
