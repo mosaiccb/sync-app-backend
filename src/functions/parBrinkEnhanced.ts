@@ -364,7 +364,9 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
             Timestamp: order.BusinessDate || new Date().toISOString(),
             ItemCount: 0, // Not provided in basic PAR Brink response
             PaymentMethod: '', // Not provided in basic PAR Brink response
-            EmployeeId: '' // Not provided in basic PAR Brink response
+            EmployeeId: '', // Not provided in basic PAR Brink response
+            Number: order.Number || '', // PAR Brink order number
+            Name: order.Name || ''       // PAR Brink customer name
         }));
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
