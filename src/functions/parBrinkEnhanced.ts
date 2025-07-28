@@ -2,9 +2,13 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 
 // Production-ready PAR Brink API integration
 // Real SOAP API integration with PAR Brink Labor2.svc
-
 export interface ParBrinkEmployee {
     EmployeeId: string;
+    FirstName: string;
+    LastName: string;
+    Status: string;
+    Position: string;
+    HourlyRate: number;
 }
 
 export interface ParBrinkShift {
@@ -197,7 +201,7 @@ async function callParBrinkSoapAPI(
                     const total = orderXml.match(/<Total>([^<]+)<\/Total>/)?.[1];
                     const businessDate = orderXml.match(/<BusinessDate>([^<]+)<\/BusinessDate>/)?.[1];
                     const orderNumber = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
-                                        const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
+                    const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
                     
                     // Parse payments for tip data
                     const payments: any[] = [];
