@@ -1,11 +1,6 @@
 import { HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 export interface ParBrinkEmployee {
     EmployeeId: string;
-    FirstName: string;
-    LastName: string;
-    Status: string;
-    Position?: string;
-    HourlyRate?: number;
 }
 export interface ParBrinkShift {
     ShiftId: string;

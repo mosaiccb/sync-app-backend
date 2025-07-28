@@ -5,11 +5,6 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 
 export interface ParBrinkEmployee {
     EmployeeId: string;
-    FirstName: string;
-    LastName: string;
-    Status: string;
-    Position?: string;
-    HourlyRate?: number;
 }
 
 export interface ParBrinkShift {
@@ -233,13 +228,7 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         // Get Mountain Time (PAR Brink timezone) - based on PowerShell examples
         const now = new Date();
         const mtTime = new Date(now.getTime() - (7 * 60 * 60 * 1000)); // UTC-7 for Mountain Time
-        const mTimeNow = mtTime.toISOString().replace('Z', '');
         const mTimeDay = businessDate || mtTime.toISOString().split('T')[0];
-        
-        // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
-        // PAR Brink expects the timezone offset for Mountain Time zone
-        // July 27, 2025 is during Daylight Saving Time, so use MDT
-        const offsetMinutes = -360; // Mountain Daylight Time (UTC-6)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -247,11 +236,7 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
                 <soapenv:Body>
                     <v2:GetShifts>
                         <v2:request>
-                            <v2:BusinessDate>${mTimeDay}</v2:BusinessDate>
-                            <v2:ModifiedTime>
-                                <sys:DateTime>${mTimeNow}</sys:DateTime>
-                                <sys:OffsetMinutes>${offsetMinutes}</sys:OffsetMinutes>
-                            </v2:ModifiedTime>
+                            <v2:BusinessDate>${mTimeDay}T00:00:00</v2:BusinessDate>
                         </v2:request>
                     </v2:GetShifts>
                 </soapenv:Body>
