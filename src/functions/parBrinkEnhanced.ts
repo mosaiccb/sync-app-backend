@@ -89,6 +89,8 @@ async function callParBrinkSoapAPI(
 
         // Log the SOAP request for debugging
         console.log(`PAR Brink SOAP ${action} request to ${apiUrl}:`, soapBody);
+        console.log(`PAR Brink SOAP ${action} - Location Token being sent:`, locationToken);
+        console.log(`PAR Brink SOAP ${action} - AccessToken provided:`, !!accessToken);
 
         // Make HTTP POST request instead of SOAP client (matching PowerShell approach)
         const response = await fetch(apiUrl, {
@@ -152,6 +154,9 @@ async function callParBrinkSoapAPI(
                         });
                     }
                 });
+                
+                console.log(`PAR Brink GetShifts - Found ${shifts.length} shifts in response for location token:`, locationToken);
+                console.log('PAR Brink GetShifts - Parsed shifts:', shifts);
                 
                 return { Shifts: shifts };
             }
@@ -374,6 +379,7 @@ export async function laborShifts(request: HttpRequest, context: InvocationConte
         }
         
         context.log('Request params:', { accessToken: !!accessToken, locationToken: !!locationToken, businessDate });
+        context.log('Location token being sent to PAR Brink:', locationToken);
         
         const shifts = await getParBrinkClockedInEmployees(accessToken, locationToken, businessDate);
         
