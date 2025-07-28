@@ -222,9 +222,7 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     // Keep business date as-is - don't convert to local time
     // Business date represents the operational day for the restaurant
     const businessDateForAPI = businessDate; // Use business date as provided
-    const localNow = getCurrentLocalTime(timezone, true);
     context.log(`Using business date for API: ${businessDateForAPI}`);
-    context.log(`Current local time: ${localNow}`);
 
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -232,11 +230,7 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
         <soapenv:Body>
           <v2:GetOrders>
             <v2:request>
-              <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
-              <v2:ModifiedTime>
-                <sys:DateTime>${localNow}</sys:DateTime>
-                <sys:OffsetMinutes>${offsetMinutes}</sys:OffsetMinutes>
-              </v2:ModifiedTime>
+              <v2:BusinessDate>${businessDateForAPI}T00:00:00</v2:BusinessDate>
             </v2:request>
           </v2:GetOrders>
         </soapenv:Body>
@@ -279,7 +273,6 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
     context.log(`Fetching PAR Brink labor data using ${timezone} offset: ${offsetMinutes} minutes for date ${businessDate}`);
     
     const businessDateForAPI = businessDate;
-    const localNow = getCurrentLocalTime(timezone, true);
     context.log(`Using business date for Labor API: ${businessDateForAPI}`);
 
     const soapBody = `
@@ -288,11 +281,7 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
         <soapenv:Body>
           <v2:GetShifts>
             <v2:request>
-              <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
-              <v2:ModifiedTime>
-                <sys:DateTime>${localNow}</sys:DateTime>
-                <sys:OffsetMinutes>${offsetMinutes}</sys:OffsetMinutes>
-              </v2:ModifiedTime>
+              <v2:BusinessDate>${businessDateForAPI}T00:00:00</v2:BusinessDate>
             </v2:request>
           </v2:GetShifts>
         </soapenv:Body>
@@ -550,24 +539,29 @@ async function getTimezoneDataAndBusinessDate(timezone: string): Promise<{ offse
       
       // Get current local datetime from the API
       const localDateTime = response.data.datetime;
-      const localDate = new Date(localDateTime);
+      
+      // Extract the local hour directly from the datetime string to avoid timezone conversion issues
+      const localHour = parseInt(localDateTime.split('T')[1].split(':')[0]);
       
       // Restaurant business logic: if it's before 5 AM, use previous day as business date
       let businessDate: string;
-      if (localDate.getHours() < 5) {
-        const prevDay = new Date(localDate);
+      const localDateStr = localDateTime.split('T')[0]; // Get just the date part
+      
+      if (localHour < 5) {
+        const prevDay = new Date(localDateStr + 'T00:00:00');
         prevDay.setDate(prevDay.getDate() - 1);
         businessDate = prevDay.toISOString().slice(0, 10);
       } else {
-        businessDate = localDate.toISOString().slice(0, 10);
+        businessDate = localDateStr;
       }
       
-      const currentLocalTime = localDate.toISOString().slice(0, 19); // Remove timezone part
+      // Extract time without timezone for currentLocalTime
+      const currentLocalTime = localDateTime.split('T')[1].split('.')[0]; // Get HH:MM:SS part
       
       console.log(`WorldTimeAPI timezone data for ${timezone}:`);
       console.log(`  Current Local DateTime: ${localDateTime}`);
-      console.log(`  Current Local Hour: ${localDate.getHours()}`);
-      console.log(`  Business Date: ${businessDate} (${localDate.getHours() < 5 ? 'adjusted for early morning' : 'same as calendar date'})`);
+      console.log(`  Current Local Hour: ${localHour}`);
+      console.log(`  Business Date: ${businessDate} (${localHour < 5 ? 'adjusted for early morning' : 'same as calendar date'})`);
       console.log(`  DST Active: ${response.data.dst}`);
       console.log(`  Abbreviation: ${response.data.abbreviation}`);
       console.log(`  PAR Brink Offset: ${offsetMinutes} minutes`);
@@ -575,7 +569,7 @@ async function getTimezoneDataAndBusinessDate(timezone: string): Promise<{ offse
       return {
         offsetMinutes,
         businessDate,
-        currentLocalTime
+        currentLocalTime: localDateStr + 'T' + currentLocalTime
       };
     }
   } catch (error) {
