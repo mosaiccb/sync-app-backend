@@ -224,11 +224,6 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     const businessDateForAPI = businessDate; // Use business date as provided
     context.log(`Using business date for API: ${businessDateForAPI}`);
 
-    // Generate ModifiedTime for PAR Brink API (required for sales data)
-    const now = new Date();
-    const localDateTime = new Date(now.getTime() - (offsetMinutes * 60000));
-    const modifiedTimeString = localDateTime.toISOString().slice(0, 19);
-
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
         <soapenv:Header/>
@@ -236,10 +231,6 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
           <v2:GetOrders>
             <v2:request>
               <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
-              <v2:ModifiedTime>
-                <sys:DateTime>${modifiedTimeString}</sys:DateTime>
-                <sys:OffsetMinutes>-${offsetMinutes}</sys:OffsetMinutes>
-              </v2:ModifiedTime>
             </v2:request>
           </v2:GetOrders>
         </soapenv:Body>
@@ -262,9 +253,9 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     
     context.log(`Retrieved ${orders.length} orders from PAR Brink`);
     
-    // Debug: Log first part of XML to see structure
-    if (orders.length === 0 && xmlData.length > 1000) {
-      context.log('DEBUG: XML response contains data but no orders parsed. First 1000 chars:', xmlData.substring(0, 1000));
+    // Debug: Log XML response when no orders found (to see what's actually returned)
+    if (orders.length === 0) {
+      context.log('DEBUG: XML response with 0 orders:', xmlData.substring(0, 2000));
     }
     
     return orders;

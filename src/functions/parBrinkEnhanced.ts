@@ -44,8 +44,10 @@ async function callParBrinkSoapAPI(
         let apiUrl;
         switch (action) {
             case 'GetShifts':
-            case 'GetEmployees':
                 apiUrl = laborApiUrl;
+                break;
+            case 'GetEmployees':
+                apiUrl = process.env.PAR_BRINK_SETTINGS_URL || 'https://api11.brinkpos.net/Settings2.svc';
                 break;
             case 'GetSales':
             case 'GetOrders':
@@ -74,9 +76,12 @@ async function callParBrinkSoapAPI(
         };
 
         // Set correct SOAPAction based on endpoint
-        if (action === 'GetShifts' || action === 'GetEmployees') {
+        if (action === 'GetShifts') {
             // Labor API actions
             headers['SOAPAction'] = `http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/${action}`;
+        } else if (action === 'GetEmployees') {
+            // Settings API actions
+            headers['SOAPAction'] = `http://www.brinksoftware.com/webservices/settings/v2/ISettingsWebService2/${action}`;
         } else {
             // Sales API actions
             headers['SOAPAction'] = `http://www.brinksoftware.com/webservices/sales/v2/ISalesWebService2/${action}`;
@@ -266,18 +271,18 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
 async function getParBrinkEmployees(accessToken?: string, locationToken?: string): Promise<ParBrinkEmployee[]> {
     try {
         const soapBody = `
-            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:set="http://www.brinksoftware.com/webservices/settings/v2">
                 <soapenv:Header/>
                 <soapenv:Body>
-                    <v2:GetEmployees>
-                        <v2:request>
-                            <v2:Active>true</v2:Active>
-                        </v2:request>
-                    </v2:GetEmployees>
+                    <set:GetEmployees>
+                        <set:request>
+                            <set:IncludeJobTypeInfo>true</set:IncludeJobTypeInfo>
+                        </set:request>
+                    </set:GetEmployees>
                 </soapenv:Body>
             </soapenv:Envelope>`;
         
-        const result = await callParBrinkSoapAPI('Labor2.svc', 'GetEmployees', soapBody, accessToken, locationToken);
+        const result = await callParBrinkSoapAPI('Settings2.svc', 'GetEmployees', soapBody, accessToken, locationToken);
         
         // Transform PAR Brink response to our interface
         const employees = result?.Employees || [];
@@ -298,16 +303,21 @@ async function getParBrinkEmployees(accessToken?: string, locationToken?: string
 // Get sales data from PAR Brink
 async function getParBrinkSales(startDate?: string, _endDate?: string, accessToken?: string, locationToken?: string): Promise<ParBrinkSales[]> {
     try {
-        // Get Mountain Time (PAR Brink timezone) - based on PowerShell examples
+        // Get current time and calculate proper timezone offset dynamically
         const now = new Date();
-        const mtTime = new Date(now.getTime() - (7 * 60 * 60 * 1000)); // UTC-7 for Mountain Time
+        
+        // Calculate Mountain Time offset dynamically (handles DST automatically)
+        // In July 2025, Mountain Time is MDT (UTC-6) = -360 minutes
+        // In Winter, Mountain Time is MST (UTC-7) = -420 minutes
+        const tempDate = new Date();
+        const utcTime = tempDate.getTime() + (tempDate.getTimezoneOffset() * 60000);
+        const mountainTime = new Date(utcTime + (-6 * 3600000)); // Assuming MDT for current date
+        const isDST = mountainTime.getTimezoneOffset() === 360; // Check if DST is active
+        const offsetMinutes = isDST ? -360 : -420; // MDT vs MST
+        
+        const mtTime = new Date(now.getTime() + (offsetMinutes * 60000));
         const mTimeNow = mtTime.toISOString().replace('Z', '');
         const mTimeDay = startDate || mtTime.toISOString().split('T')[0];
-        
-        // Calculate Mountain Time offset minutes (MST = -420, MDT = -360)
-        // PAR Brink expects the timezone offset for Mountain Time zone
-        // July 27, 2025 is during Daylight Saving Time, so use MDT
-        const offsetMinutes = -360; // Mountain Daylight Time (UTC-6)
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
