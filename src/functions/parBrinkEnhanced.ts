@@ -197,7 +197,7 @@ async function callParBrinkSoapAPI(
                     const total = orderXml.match(/<Total>([^<]+)<\/Total>/)?.[1];
                     const businessDate = orderXml.match(/<BusinessDate>([^<]+)<\/BusinessDate>/)?.[1];
                     const orderNumber = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
-                    const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
+                                        const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
                     
                     // Parse payments for tip data
                     const payments: any[] = [];
@@ -369,12 +369,14 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
         const mTimeDay = startDate || now.toISOString().split('T')[0];
 
         console.log(`PAR Brink SOAP GetOrders request to https://api11.brinkpos.net/sales2.svc: 
-            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2">
                 <soapenv:Header/>
                 <soapenv:Body>
                     <v2:GetOrders>
                         <v2:request>
                             <v2:BusinessDate>${mTimeDay}</v2:BusinessDate>
+                            <v2:ExcludeOpenOrders>false</v2:ExcludeOpenOrders>
+                            <v2:PriceRollUp>RollUpAndDetails</v2:PriceRollUp>
                         </v2:request>
                     </v2:GetOrders>
                 </soapenv:Body>
@@ -383,12 +385,14 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
         console.log(`PAR Brink SOAP GetOrders - AccessToken provided: ${!!accessToken}`);
 
         const soapBody = `
-            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2">
                 <soapenv:Header/>
                 <soapenv:Body>
                     <v2:GetOrders>
                         <v2:request>
                             <v2:BusinessDate>${mTimeDay}</v2:BusinessDate>
+                            <v2:ExcludeOpenOrders>false</v2:ExcludeOpenOrders>
+                            <v2:PriceRollUp>RollUpAndDetails</v2:PriceRollUp>
                         </v2:request>
                     </v2:GetOrders>
                 </soapenv:Body>
