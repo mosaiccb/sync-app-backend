@@ -465,16 +465,52 @@ function parseOrdersFromXML(xmlData: string): SalesOrder[] {
       return [];
     }
 
-    // Real XML parsing logic would go here
-    // For now, return empty array until real PAR Brink XML response is received
-    // TODO: Implement actual XML parsing based on PAR Brink GetOrders response format
+    const orders: SalesOrder[] = [];
     
-    // Sample real implementation would use xml2js or similar:
-    // const parser = new xml2js.Parser();
-    // const result = await parser.parseStringPromise(xmlData);
-    // Extract order data from result and map to SalesOrder interface
+    // Extract order data using regex - PAR Brink returns <Order> elements
+    const orderMatches = xmlData.match(/<Order>[\s\S]*?<\/Order>/g) || [];
     
-    return [];
+    orderMatches.forEach(orderXml => {
+      try {
+        // Extract basic order information
+        const id = orderXml.match(/<Id>([^<]+)<\/Id>/)?.[1];
+        const number = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
+        const total = parseFloat(orderXml.match(/<Total>([^<]+)<\/Total>/)?.[1] || '0');
+        const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
+        
+        // Extract FirstSendTime for timestamp
+        const firstSendTimeMatch = orderXml.match(/<FirstSendTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+        const firstSendTime = firstSendTimeMatch?.[1];
+        
+        // Extract ModifiedTime for tracking
+        const modifiedTimeMatch = orderXml.match(/<ModifiedTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+        const modifiedTime = modifiedTimeMatch?.[1];
+        
+        if (id && number && total > 0) {
+          const order: SalesOrder = {
+            Id: id,
+            Name: name || `Order ${number}`,
+            Number: number,
+            Total: total,
+            firstsendtime: firstSendTime ? {
+              DateTime: firstSendTime,
+              nil: false
+            } : undefined,
+            modifiedtime: modifiedTime ? {
+              DateTime: modifiedTime
+            } : undefined
+          };
+          
+          orders.push(order);
+        }
+      } catch (error) {
+        // Skip invalid order records
+        console.error('Error parsing individual order:', error);
+      }
+    });
+    
+    console.log(`Parsed ${orders.length} orders from PAR Brink XML response`);
+    return orders;
   } catch (error) {
     console.error('Error parsing XML orders:', error);
     return [];
