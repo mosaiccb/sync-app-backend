@@ -224,13 +224,22 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     const businessDateForAPI = businessDate; // Use business date as provided
     context.log(`Using business date for API: ${businessDateForAPI}`);
 
+    // Generate ModifiedTime for PAR Brink API (required for sales data)
+    const now = new Date();
+    const localDateTime = new Date(now.getTime() - (offsetMinutes * 60000));
+    const modifiedTimeString = localDateTime.toISOString().slice(0, 19);
+
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
         <soapenv:Header/>
         <soapenv:Body>
           <v2:GetOrders>
             <v2:request>
-              <v2:BusinessDate>${businessDateForAPI}T00:00:00</v2:BusinessDate>
+              <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
+              <v2:ModifiedTime>
+                <sys:DateTime>${modifiedTimeString}</sys:DateTime>
+                <sys:OffsetMinutes>-${offsetMinutes}</sys:OffsetMinutes>
+              </v2:ModifiedTime>
             </v2:request>
           </v2:GetOrders>
         </soapenv:Body>
@@ -252,6 +261,12 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
     const orders = parseOrdersFromXML(xmlData);
     
     context.log(`Retrieved ${orders.length} orders from PAR Brink`);
+    
+    // Debug: Log first part of XML to see structure
+    if (orders.length === 0 && xmlData.length > 1000) {
+      context.log('DEBUG: XML response contains data but no orders parsed. First 1000 chars:', xmlData.substring(0, 1000));
+    }
+    
     return orders;
 
   } catch (error) {
@@ -467,16 +482,24 @@ function parseOrdersFromXML(xmlData: string): SalesOrder[] {
 
     const orders: SalesOrder[] = [];
     
+    // Debug: Log XML structure
+    console.log('XML parsing - Response length:', xmlData.length);
+    console.log('XML parsing - Contains <Order>:', xmlData.includes('<Order>'));
+    console.log('XML parsing - Contains <Orders>:', xmlData.includes('<Orders>'));
+    
     // Extract order data using regex - PAR Brink returns <Order> elements
     const orderMatches = xmlData.match(/<Order>[\s\S]*?<\/Order>/g) || [];
+    console.log('XML parsing - Found order matches:', orderMatches.length);
     
-    orderMatches.forEach(orderXml => {
+    orderMatches.forEach((orderXml, index) => {
       try {
         // Extract basic order information
         const id = orderXml.match(/<Id>([^<]+)<\/Id>/)?.[1];
         const number = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
         const total = parseFloat(orderXml.match(/<Total>([^<]+)<\/Total>/)?.[1] || '0');
         const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
+        
+        console.log(`XML parsing - Order ${index + 1}: ID=${id}, Number=${number}, Total=${total}, Name=${name}`);
         
         // Extract FirstSendTime for timestamp
         const firstSendTimeMatch = orderXml.match(/<FirstSendTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
@@ -502,6 +525,9 @@ function parseOrdersFromXML(xmlData: string): SalesOrder[] {
           };
           
           orders.push(order);
+          console.log(`XML parsing - Successfully added order ${index + 1}`);
+        } else {
+          console.log(`XML parsing - Skipped order ${index + 1}: missing required fields`);
         }
       } catch (error) {
         // Skip invalid order records
