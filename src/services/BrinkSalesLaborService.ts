@@ -125,7 +125,13 @@ export class BrinkSalesLaborService {
       if (!transaction.timestamp || !transaction.amount) return;
 
       const transactionTime = new Date(transaction.timestamp);
-      let hour = transactionTime.getHours();
+      // Convert to Mountain Time before extracting hour
+      const mountainTimeHour = parseInt(transactionTime.toLocaleString("en-US", { 
+        timeZone: "America/Denver",
+        hour: 'numeric',
+        hour12: false
+      }));
+      let hour = mountainTimeHour;
       
       // Adjust for restaurant day (3 AM start)
       if (hour < 3) {
@@ -171,7 +177,13 @@ export class BrinkSalesLaborService {
       const hourlyRate = totalCost / totalHours;
 
       while (currentTime < endTime) {
-        let hour = currentTime.getHours();
+        // Convert to Mountain Time before extracting hour
+        const mountainTimeHour = parseInt(currentTime.toLocaleString("en-US", { 
+          timeZone: "America/Denver",
+          hour: 'numeric',
+          hour12: false
+        }));
+        let hour = mountainTimeHour;
         
         // Adjust for restaurant day (3 AM start)
         if (hour < 3) {

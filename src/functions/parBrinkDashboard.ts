@@ -341,7 +341,13 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     if (!order.firstsendtime?.DateTime || order.firstsendtime.nil) return;
 
     const orderTime = new Date(order.firstsendtime.DateTime);
-    const hour = `${orderTime.getHours().toString().padStart(2, '0')}:00`;
+    // Convert to Mountain Time before extracting hour
+    const mountainTimeHour = parseInt(orderTime.toLocaleString("en-US", { 
+      timeZone: "America/Denver",
+      hour: 'numeric',
+      hour12: false
+    }));
+    const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
 
     if (hourlyData[hour]) {
       hourlyData[hour].sales += order.Total || 0;
@@ -384,7 +390,13 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     punches.forEach(punch => {
       try {
         const punchDate = new Date(punch['local Time']);
-        const hour = `${punchDate.getHours().toString().padStart(2, '0')}:00`;
+        // Convert to Mountain Time before extracting hour
+        const mountainTimeHour = parseInt(punchDate.toLocaleString("en-US", { 
+          timeZone: "America/Denver",
+          hour: 'numeric',
+          hour12: false
+        }));
+        const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
         
         if (hourlyData[hour] && punch.payRate && punch.hoursWorked) {
           // Calculate labor cost using PAR Brink data: hours worked * pay rate
