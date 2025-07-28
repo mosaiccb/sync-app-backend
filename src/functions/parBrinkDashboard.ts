@@ -26,6 +26,8 @@ interface PunchDetail {
   SourceType: string;
   timeZone: string;
   'local Time': string;
+  payRate?: number; // Optional pay rate for labor cost calculations
+  hoursWorked?: number; // Optional hours worked for labor calculations
 }
 
 interface HourlySalesData {
@@ -143,8 +145,8 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     context.log(`Using timezone offset: ${offsetMinutes} minutes`);
     const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
     
-    // Fetch labor data (placeholder - would need to integrate with UKG or other labor system)
-    const laborData = await fetchLaborData(locationInfo.id, targetDate, context);
+    // Fetch labor data from PAR Brink using the same access token
+    const laborData = await fetchParBrinkLaborData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
 
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
@@ -264,17 +266,55 @@ async function fetchParBrinkSalesData(accessToken: string, locationToken: string
   }
 }
 
-async function fetchLaborData(locationId: string, businessDate: string, context: InvocationContext): Promise<PunchDetail[]> {
+async function fetchParBrinkLaborData(accessToken: string, locationToken: string, businessDate: string, offsetMinutes: number, timezone: string, context: InvocationContext): Promise<PunchDetail[]> {
   try {
-    // This would integrate with UKG or other labor system
-    // For now, return mock data structure
-    context.log(`Fetching labor data for location ${locationId} on ${businessDate}`);
+    const headers = {
+      'AccessToken': accessToken,
+      'LocationToken': locationToken,
+      'Content-Type': 'text/xml',
+      'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/GetShifts'
+    };
+
+    // Use the same timezone offset calculation as sales data
+    context.log(`Fetching PAR Brink labor data using ${timezone} offset: ${offsetMinutes} minutes for date ${businessDate}`);
     
-    // In a real implementation, this would call UKG API or SQL database
-    return [];
+    const businessDateForAPI = businessDate;
+    const localNow = getCurrentLocalTime(timezone, true);
+    context.log(`Using business date for Labor API: ${businessDateForAPI}`);
+
+    const soapBody = `
+      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
+        <soapenv:Header/>
+        <soapenv:Body>
+          <v2:GetShifts>
+            <v2:request>
+              <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
+              <v2:ModifiedTime>
+                <sys:DateTime>${localNow}</sys:DateTime>
+                <sys:OffsetMinutes>${offsetMinutes}</sys:OffsetMinutes>
+              </v2:ModifiedTime>
+            </v2:request>
+          </v2:GetShifts>
+        </soapenv:Body>
+      </soapenv:Envelope>
+    `;
+
+    context.log('Making PAR Brink Labor API call with SOAP body:', soapBody.substring(0, 500) + '...');
+    
+    const response = await axios.post('https://api11.brinkpos.net/labor2.svc', soapBody, { headers });
+    
+    // Parse XML response
+    const xmlData = response.data;
+    context.log(`PAR Brink Labor API response received. Response length: ${xmlData?.length || 0} characters`);
+    
+    // Parse shifts from XML response
+    const shifts = parseShiftsFromXML(xmlData);
+    context.log(`Parsed ${shifts.length} labor shifts from PAR Brink API`);
+    
+    return shifts;
 
   } catch (error) {
-    context.error('Error fetching labor data:', error);
+    context.error('Error fetching PAR Brink labor data:', error);
     return [];
   }
 }
@@ -344,21 +384,20 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     };
   });
 
-  // Process actual punch data if available
+  // Process PAR Brink shift data - now with real labor cost calculations
   if (punches && punches.length > 0) {
     punches.forEach(punch => {
       try {
         const punchDate = new Date(punch['local Time']);
         const hour = `${punchDate.getHours().toString().padStart(2, '0')}:00`;
         
-        if (hourlyData[hour]) {
-          // This is a simplified calculation - in reality you'd need to:
-          // 1. Calculate actual hours worked from punch in/out pairs
-          // 2. Get employee hourly rates from your system
-          // 3. Handle overtime, breaks, etc.
+        if (hourlyData[hour] && punch.payRate && punch.hoursWorked) {
+          // Calculate labor cost using PAR Brink data: hours worked * pay rate
+          const laborCost = punch.hoursWorked * punch.payRate;
           
+          hourlyData[hour].laborCost += laborCost;
+          hourlyData[hour].hoursWorked += punch.hoursWorked;
           hourlyData[hour].employeesWorking += 1;
-          // You would calculate actual hours and costs based on your labor system
         }
       } catch (error) {
         // Skip invalid punch records
@@ -367,6 +406,68 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   }
 
   return hours.map(hour => hourlyData[hour]);
+}
+
+function parseShiftsFromXML(xmlData: string): PunchDetail[] {
+  try {
+    if (!xmlData || xmlData.trim() === '') {
+      return [];
+    }
+
+    const shifts: PunchDetail[] = [];
+    
+    // Extract shift data using regex (similar pattern to parBrinkEnhanced.js)
+    const shiftMatches = xmlData.match(/<Shift>[\s\S]*?<\/Shift>/g) || [];
+    
+    shiftMatches.forEach(shiftXml => {
+      try {
+        const employeeId = shiftXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
+        const businessDate = shiftXml.match(/<BusinessDate>([^<]+)<\/BusinessDate>/)?.[1];
+        const startTime = shiftXml.match(/<StartTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/)?.[1];
+        const endTime = shiftXml.match(/<EndTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/)?.[1];
+        const payRate = parseFloat(shiftXml.match(/<PayRate>([^<]+)<\/PayRate>/)?.[1] || '0');
+        const minutesWorked = parseInt(shiftXml.match(/<MinutesWorked>([^<]+)<\/MinutesWorked>/)?.[1] || '0');
+
+        if (employeeId && businessDate && startTime) {
+          // Create punch detail record matching expected interface
+          const punchDetail: PunchDetail = {
+            punchdate: businessDate,
+            'cost center 1': '', // Could be extracted from Job/Cost Center if available
+            Type: endTime && endTime !== '0001-01-01T00:00:00Z' ? 'OUT' : 'IN',
+            'employee Id': employeeId,
+            username: '', // Not available in shift data
+            firstName: '', // Not available in shift data  
+            lastName: '', // Not available in shift data
+            SourceType: 'PAR Brink',
+            timeZone: 'America/Denver', // Mountain Time for PAR Brink locations
+            'local Time': startTime,
+            payRate: payRate, // Add pay rate for labor cost calculations
+            hoursWorked: minutesWorked / 60 // Convert minutes to hours
+          };
+          
+          shifts.push(punchDetail);
+          
+          // If there's an end time, add an OUT punch
+          if (endTime && endTime !== '0001-01-01T00:00:00Z') {
+            const outPunch: PunchDetail = {
+              ...punchDetail,
+              Type: 'OUT',
+              'local Time': endTime
+            };
+            shifts.push(outPunch);
+          }
+        }
+      } catch (error) {
+        // Skip invalid shift records
+        console.error('Error parsing individual shift:', error);
+      }
+    });
+    
+    return shifts;
+  } catch (error) {
+    console.error('Error parsing XML shifts:', error);
+    return [];
+  }
 }
 
 function parseOrdersFromXML(xmlData: string): SalesOrder[] {

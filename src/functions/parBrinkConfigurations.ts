@@ -113,20 +113,6 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
     };
 
     context.log(`Returning ${sanitizedLocations.length} active PAR Brink locations`);
-    
-    // Log access token for debugging
-    context.log('Configurations returning access token:', 
-      config.accessToken?.substring(0, 8) + '...');
-    
-    // TODO: Validation logging - remove after confirming fix  
-    const expectedToken = 'tBJ5haIyv0uRbbWQL6FbXw==';
-    if (config.accessToken === expectedToken) {
-      context.log('✅ Configurations returning CORRECT access token to frontend');
-    } else if (config.accessToken === 'demo-access-token') {
-      context.log('❌ Configurations still returning DEMO token to frontend');
-    } else {
-      context.log('⚠️ Configurations returning unexpected token to frontend');
-    }
 
     return {
       status: 200,
@@ -156,7 +142,7 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
 
 function getStaticBrinkConfiguration(): BrinkConfig {
   return {
-    accessToken: process.env.PAR_BRINK_ACCESS_TOKEN || 'demo-access-token',
+    accessToken: 'tBJ5haIyv0uRbbWQL6FbXw==', // Real PAR Brink token (was demo-access-token)
     selectedEndpoints: ['dashboard', 'sales', 'labor'],
     locations: [
       { id: "1", name: "Castle Rock", locationId: "109", token: "RPNrrDYtnke+OHNLfy74/A==", isActive: true },

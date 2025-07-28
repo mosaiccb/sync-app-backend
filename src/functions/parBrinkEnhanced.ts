@@ -129,11 +129,6 @@ async function callParBrinkSoapAPI(
             token = config.accessToken;
         }
         
-        // Validate access token for debugging
-        const expectedToken = 'tBJ5haIyv0uRbbWQL6FbXw==';
-        console.log(`Access token validation: Retrieved="${token}", Expected="${expectedToken}", Match=${token === expectedToken}`);
-        // TODO: REMOVE THIS VALIDATION LOG ONCE ACCESS TOKEN ISSUE IS RESOLVED!
-        
         // Check if we have access token configured
         if (!token) {
             throw new Error('PAR Brink access token not configured. Please check database configuration or set PAR_BRINK_ACCESS_TOKEN environment variable.');
