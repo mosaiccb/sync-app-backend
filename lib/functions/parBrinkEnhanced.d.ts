@@ -23,4 +23,5 @@ export interface ParBrinkSales {
 export declare function laborShifts(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 export declare function employees(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 export declare function sales(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
+export declare function tips(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit>;
 //# sourceMappingURL=parBrinkEnhanced.d.ts.map

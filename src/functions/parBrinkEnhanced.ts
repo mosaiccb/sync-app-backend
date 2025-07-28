@@ -199,7 +199,50 @@ async function callParBrinkSoapAPI(
                     const orderNumber = orderXml.match(/<Number>([^<]+)<\/Number>/)?.[1];
                     const name = orderXml.match(/<Name>([^<]+)<\/Name>/)?.[1];
                     
-                    console.log(`Order ${index + 1}: Id=${orderId}, Number=${orderNumber}, Total=${total}, Name=${name}`);
+                    // Parse payments for tip data
+                    const payments: any[] = [];
+                    const paymentMatches = orderXml.match(/<Payment>[\s\S]*?<\/Payment>/g) || [];
+                    
+                    paymentMatches.forEach(paymentXml => {
+                        const paymentId = paymentXml.match(/<Id>([^<]+)<\/Id>/)?.[1];
+                        const amount = paymentXml.match(/<Amount>([^<]+)<\/Amount>/)?.[1];
+                        const tenderId = paymentXml.match(/<TenderId>([^<]+)<\/TenderId>/)?.[1];
+                        const tipAmount = paymentXml.match(/<TipAmount>([^<]+)<\/TipAmount>/)?.[1];
+                        const employeeId = paymentXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
+                        
+                        // Parse payment details for additional tip data
+                        const details: any[] = [];
+                        const detailMatches = paymentXml.match(/<Detail>[\s\S]*?<\/Detail>/g) || [];
+                        
+                        detailMatches.forEach(detailXml => {
+                            const detailTipAmount = detailXml.match(/<TipAmount>([^<]+)<\/TipAmount>/)?.[1];
+                            const detailEmployeeId = detailXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
+                            const tillNumber = detailXml.match(/<TillNumber>([^<]+)<\/TillNumber>/)?.[1];
+                            const detailId = detailXml.match(/<Id>([^<]+)<\/Id>/)?.[1];
+                            
+                            if (detailTipAmount && parseFloat(detailTipAmount) > 0) {
+                                details.push({
+                                    Id: detailId,
+                                    TipAmount: parseFloat(detailTipAmount || '0'),
+                                    EmployeeId: detailEmployeeId,
+                                    TillNumber: tillNumber ? parseInt(tillNumber) : null
+                                });
+                            }
+                        });
+                        
+                        if (paymentId) {
+                            payments.push({
+                                Id: paymentId,
+                                Amount: parseFloat(amount || '0'),
+                                TenderId: tenderId ? parseInt(tenderId) : null,
+                                TipAmount: parseFloat(tipAmount || '0'),
+                                EmployeeId: employeeId,
+                                Details: details
+                            });
+                        }
+                    });
+                    
+                    console.log(`Order ${index + 1}: Id=${orderId}, Number=${orderNumber}, Total=${total}, Name=${name}, Payments=${payments.length}`);
                     
                     // Include orders with valid ID and non-zero totals (exclude test/incomplete orders)
                     if (orderId && total && parseFloat(total) > 0) {
@@ -208,7 +251,8 @@ async function callParBrinkSoapAPI(
                             Total: parseFloat(total),
                             BusinessDate: businessDate,
                             Number: orderNumber,
-                            Name: name
+                            Name: name,
+                            Payments: payments
                         });
                         console.log(`Added order ${index + 1} to results`);
                     } else {
@@ -371,6 +415,104 @@ async function getParBrinkSales(startDate?: string, _endDate?: string, accessTok
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new Error(`Failed to fetch sales data: ${errorMessage}`);
+    }
+}
+
+// Get tips data from PAR Brink (both credit card and cash tips)
+async function getParBrinkTips(startDate?: string, _endDate?: string, accessToken?: string, locationToken?: string): Promise<any[]> {
+    try {
+        // Get current time for business date calculation
+        const now = new Date();
+        
+        // Use provided start date or current date for business date
+        const mTimeDay = startDate || now.toISOString().split('T')[0];
+
+        console.log(`PAR Brink SOAP GetOrders request for tips analysis - Business Date: ${mTimeDay}`);
+
+        // Use enhanced GetOrders call matching PowerShell example
+        const soapBody = `
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/sales/v2">
+                <soapenv:Header/>
+                <soapenv:Body>
+                    <v2:GetOrders>
+                        <v2:request>
+                            <v2:BusinessDate>${mTimeDay}</v2:BusinessDate>
+                            <v2:ExcludeOpenOrders>false</v2:ExcludeOpenOrders>
+                            <v2:PriceRollUp>RollUpAndDetails</v2:PriceRollUp>
+                        </v2:request>
+                    </v2:GetOrders>
+                </soapenv:Body>
+            </soapenv:Envelope>`;
+        
+        const result = await callParBrinkSoapAPI('Sales2.svc', 'GetOrders', soapBody, accessToken, locationToken);
+        
+        console.log(`PAR Brink SOAP GetOrders for tips response:`, JSON.stringify(result, null, 2));
+        
+        // Parse orders and extract tip data from payments
+        const orders = result?.Orders?.order || [];
+        const tipsData: any[] = [];
+        
+        orders.forEach((order: any, orderIndex: number) => {
+            console.log(`Processing order ${orderIndex + 1}: OrderId=${order.OrderId}, Payments=${order.Payments?.length || 0}`);
+            
+            if (order.Payments && Array.isArray(order.Payments)) {
+                order.Payments.forEach((payment: any, paymentIndex: number) => {
+                    console.log(`Processing payment ${paymentIndex + 1}: Amount=${payment.Amount}, TipAmount=${payment.TipAmount}`);
+                    
+                    // Check for tip amount directly on payment (based on PowerShell structure)
+                    const tipAmount = parseFloat(payment.TipAmount || '0');
+                    if (tipAmount > 0) {
+                        tipsData.push({
+                            OrderId: order.OrderId || order.Id,
+                            OrderNumber: order.Number,
+                            CustomerName: order.Name,
+                            TipAmount: tipAmount,
+                            PaymentType: payment.TenderId || 'Unknown',
+                            PaymentAmount: parseFloat(payment.Amount || '0'),
+                            EmployeeId: payment.EmployeeId,
+                            TillNumber: payment.TillNumber,
+                            BusinessDate: order.BusinessDate,
+                            Timestamp: payment.BusinessDate || order.BusinessDate,
+                            PaymentId: payment.Id
+                        });
+                        console.log(`Found tip: $${tipAmount} for Order ${order.OrderId || order.Id}`);
+                    }
+                    
+                    // Also check payment details if they exist
+                    if (payment.Details && Array.isArray(payment.Details)) {
+                        payment.Details.forEach((detail: any, detailIndex: number) => {
+                            console.log(`Processing payment detail ${detailIndex + 1}: TipAmount=${detail.TipAmount}`);
+                            
+                            const detailTipAmount = parseFloat(detail.TipAmount || '0');
+                            if (detailTipAmount > 0) {
+                                tipsData.push({
+                                    OrderId: order.OrderId || order.Id,
+                                    OrderNumber: order.Number,
+                                    CustomerName: order.Name,
+                                    TipAmount: detailTipAmount,
+                                    PaymentType: payment.TenderId || 'Unknown',
+                                    PaymentAmount: parseFloat(payment.Amount || '0'),
+                                    EmployeeId: detail.EmployeeId || payment.EmployeeId,
+                                    TillNumber: detail.TillNumber || payment.TillNumber,
+                                    BusinessDate: order.BusinessDate,
+                                    Timestamp: payment.BusinessDate || order.BusinessDate,
+                                    PaymentId: payment.Id,
+                                    DetailId: detail.Id
+                                });
+                                console.log(`Found detail tip: $${detailTipAmount} for Order ${order.OrderId || order.Id}`);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        
+        console.log(`Parsed ${tipsData.length} tip entries from ${orders.length} PAR Brink orders`);
+        return tipsData;
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('PAR Brink tips extraction error:', errorMessage);
+        throw new Error(`Failed to fetch tips data: ${errorMessage}`);
     }
 }
 
@@ -551,6 +693,69 @@ export async function sales(request: HttpRequest, context: InvocationContext): P
     }
 }
 
+// Tips endpoint - real PAR Brink integration
+export async function tips(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+    try {
+        context.log('PAR Brink tips endpoint called');
+        
+        let startDate, endDate, accessToken, locationToken;
+        
+        // Handle both GET and POST requests
+        if (request.method === 'POST') {
+            try {
+                const body = await request.text();
+                const requestData = JSON.parse(body);
+                startDate = requestData.startDate;
+                endDate = requestData.endDate;
+                accessToken = requestData.accessToken;
+                locationToken = requestData.locationToken;
+                context.log('Tips request data:', requestData);
+            } catch (parseError) {
+                context.log('Error parsing request body:', parseError);
+            }
+        } else {
+            const url = new URL(request.url);
+            startDate = url.searchParams.get('startDate') || undefined;
+            endDate = url.searchParams.get('endDate') || undefined;
+        }
+        
+        const tipsData = await getParBrinkTips(startDate, endDate, accessToken, locationToken);
+        
+        return {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            },
+            body: JSON.stringify({
+                success: true,
+                data: tipsData,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
+        };
+    } catch (error) {
+        context.log('PAR Brink tips error:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return {
+            status: 501,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({
+                success: false,
+                error: errorMessage,
+                timestamp: new Date().toISOString(),
+                source: 'par-brink-api'
+            })
+        };
+    }
+}
+
 // Register the function endpoints - matching frontend API expectations
 app.http('par-brink-labor-shifts', {
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -571,4 +776,11 @@ app.http('par-brink-sales', {
     authLevel: 'anonymous',
     route: 'par-brink/sales',
     handler: sales
+});
+
+app.http('par-brink-tips', {
+    methods: ['GET', 'POST', 'OPTIONS'],
+    authLevel: 'anonymous',
+    route: 'par-brink/tips',
+    handler: tips
 });
