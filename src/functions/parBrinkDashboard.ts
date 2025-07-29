@@ -84,7 +84,7 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
 
     // Get request parameters
     const body = await request.json() as any;
-    const { locationToken, accessToken, businessDate, endTime } = body;
+    const { locationToken, accessToken, businessDate } = body;
 
     if (!locationToken || !accessToken) {
       context.log('Missing required parameters');
@@ -416,9 +416,10 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     hours.forEach(hour => {
       const data = hourlyData[hour];
       
-      // VALIDATION RULE 1: Labor hours cannot exceed number of employees
+      // VALIDATION RULE 1: Labor hours cannot exceed number of employees * 1.0
+      // (Each employee can work at most 1 hour within any given hour block)
       if (data.employeesWorking > 0 && data.hoursWorked > data.employeesWorking) {
-        console.warn(`Labor validation warning for ${hour}: ${data.hoursWorked} hours exceeds ${data.employeesWorking} employees. Capping at employee count.`);
+        console.warn(`Labor validation ERROR for ${hour}: ${data.hoursWorked} hours exceeds maximum possible ${data.employeesWorking} hours for ${data.employeesWorking} employees. Capping at employee count.`);
         
         // Calculate proportional reduction for labor cost
         const hoursReductionRatio = data.employeesWorking / data.hoursWorked;
@@ -427,13 +428,34 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         data.laborCost = data.laborCost * hoursReductionRatio; // Proportionally reduce cost
       }
       
-      // VALIDATION RULE 2: If employees are working but no hours recorded, set minimum hours
-      if (data.employeesWorking > 0 && data.hoursWorked === 0) {
-        console.warn(`Labor validation warning for ${hour}: ${data.employeesWorking} employees but 0 hours. Setting minimum hours.`);
-        data.hoursWorked = data.employeesWorking * 0.1; // Minimum 6 minutes per employee
+      // VALIDATION RULE 2: Labor hours cannot exceed 1.0 per employee per hour block
+      // This catches cases where individual punch records might be wrong
+      if (data.employeesWorking > 0) {
+        const maxPossibleHours = data.employeesWorking * 1.0;
+        if (data.hoursWorked > maxPossibleHours) {
+          console.warn(`Labor validation ERROR for ${hour}: ${data.hoursWorked} hours exceeds physical maximum of ${maxPossibleHours} hours.`);
+          data.hoursWorked = maxPossibleHours;
+        }
       }
       
-      // VALIDATION RULE 3: No negative values
+      // VALIDATION RULE 3: Minimum wage validation ($15/hour minimum)
+      if (data.hoursWorked > 0 && data.laborCost > 0) {
+        const avgWage = data.laborCost / data.hoursWorked;
+        if (avgWage < 15.0) {
+          console.warn(`Labor validation WARNING for ${hour}: Average wage of $${avgWage.toFixed(2)}/hour is below minimum wage.`);
+        }
+        if (avgWage > 50.0) {
+          console.warn(`Labor validation WARNING for ${hour}: Average wage of $${avgWage.toFixed(2)}/hour seems unusually high.`);
+        }
+      }
+      
+      // VALIDATION RULE 4: Labor cost consistency check
+      // If we have hours but no cost, or cost but no hours, flag it
+      if ((data.hoursWorked > 0 && data.laborCost === 0) || (data.laborCost > 0 && data.hoursWorked === 0)) {
+        console.warn(`Labor validation WARNING for ${hour}: Inconsistent hours (${data.hoursWorked}) and cost ($${data.laborCost}).`);
+      }
+      
+      // VALIDATION RULE 5: No negative values
       data.hoursWorked = Math.max(0, data.hoursWorked);
       data.laborCost = Math.max(0, data.laborCost);
       data.employeesWorking = Math.max(0, data.employeesWorking);
