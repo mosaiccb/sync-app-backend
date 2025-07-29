@@ -278,7 +278,8 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
     // Use the same timezone offset calculation as sales data
     context.log(`Fetching PAR Brink labor data using ${timezone} offset: ${offsetMinutes} minutes for date ${businessDate}`);
     
-    const businessDateForAPI = businessDate;
+    // PAR Brink Labor API expects simple date format: YYYY-MM-DD
+    const businessDateForAPI = businessDate.includes('T') ? businessDate.split('T')[0] : businessDate;
     context.log(`Using business date for Labor API: ${businessDateForAPI}`);
 
     const soapBody = `
@@ -287,7 +288,7 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
         <soapenv:Body>
           <v2:GetShifts>
             <v2:request>
-              <v2:BusinessDate>${businessDateForAPI}T00:00:00</v2:BusinessDate>
+              <v2:BusinessDate>${businessDateForAPI}</v2:BusinessDate>
             </v2:request>
           </v2:GetShifts>
         </soapenv:Body>
