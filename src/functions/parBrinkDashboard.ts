@@ -400,28 +400,19 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
         
         if (hourlyData[hour] && punch.hoursWorked) {
-          // Calculate labor cost using PAR Brink data: hours worked * pay rate
-          // Handle salaried employees (payRate = 0 or null) with estimated cost
-          let payRate = punch.payRate || 0;
-          
-          // For salaried employees (payRate = 0), estimate cost based on position/role
-          if (payRate === 0) {
-            // Estimate salaried employee cost based on typical rates
-            // This could be made configurable per location in the future
-            const position = punch.firstName || punch.lastName || 'Unknown';
-            if (position.toLowerCase().includes('manager') || position.toLowerCase().includes('supervisor')) {
-              payRate = 25.0; // Manager equivalent rate
-            } else {
-              payRate = 20.0; // General salaried employee rate
-            }
-            console.log(`Salaried employee found at ${hour}: ${punch.hoursWorked} hours, using estimated rate $${payRate}/hour`);
-          }
-          
-          const laborCost = punch.hoursWorked * payRate;
-          
-          hourlyData[hour].laborCost += laborCost;
+          // Labor Hours: Include ALL employees (hourly + salaried)
           hourlyData[hour].hoursWorked += punch.hoursWorked;
           hourlyData[hour].employeesWorking += 1;
+          
+          // Labor Cost: Only include HOURLY employees (payRate > 0)
+          // Salaried employees contribute hours but not to labor cost
+          if (punch.payRate && punch.payRate > 0) {
+            const laborCost = punch.hoursWorked * punch.payRate;
+            hourlyData[hour].laborCost += laborCost;
+            console.log(`Hourly employee at ${hour}: ${punch.hoursWorked} hours, $${punch.payRate}/hour = $${laborCost}`);
+          } else {
+            console.log(`Salaried employee at ${hour}: ${punch.hoursWorked} hours, $0 labor cost (excluded from cost calculation)`);
+          }
         }
       } catch (error) {
         // Skip invalid punch records
