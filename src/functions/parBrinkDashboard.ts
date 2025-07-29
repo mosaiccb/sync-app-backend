@@ -84,7 +84,7 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
 
     // Get request parameters
     const body = await request.json() as any;
-    const { locationToken, accessToken, businessDate } = body;
+    const { locationToken, accessToken, businessDate, endTime } = body;
 
     if (!locationToken || !accessToken) {
       context.log('Missing required parameters');
@@ -386,7 +386,7 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     };
   });
 
-  // Process PAR Brink shift data - now with real labor cost calculations
+  // Process PAR Brink shift data with validation
   if (punches && punches.length > 0) {
     punches.forEach(punch => {
       try {
@@ -410,6 +410,33 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
       } catch (error) {
         // Skip invalid punch records
       }
+    });
+
+    // Apply validation rules and corrections
+    hours.forEach(hour => {
+      const data = hourlyData[hour];
+      
+      // VALIDATION RULE 1: Labor hours cannot exceed number of employees
+      if (data.employeesWorking > 0 && data.hoursWorked > data.employeesWorking) {
+        console.warn(`Labor validation warning for ${hour}: ${data.hoursWorked} hours exceeds ${data.employeesWorking} employees. Capping at employee count.`);
+        
+        // Calculate proportional reduction for labor cost
+        const hoursReductionRatio = data.employeesWorking / data.hoursWorked;
+        
+        data.hoursWorked = data.employeesWorking; // Cap at employee count
+        data.laborCost = data.laborCost * hoursReductionRatio; // Proportionally reduce cost
+      }
+      
+      // VALIDATION RULE 2: If employees are working but no hours recorded, set minimum hours
+      if (data.employeesWorking > 0 && data.hoursWorked === 0) {
+        console.warn(`Labor validation warning for ${hour}: ${data.employeesWorking} employees but 0 hours. Setting minimum hours.`);
+        data.hoursWorked = data.employeesWorking * 0.1; // Minimum 6 minutes per employee
+      }
+      
+      // VALIDATION RULE 3: No negative values
+      data.hoursWorked = Math.max(0, data.hoursWorked);
+      data.laborCost = Math.max(0, data.laborCost);
+      data.employeesWorking = Math.max(0, data.employeesWorking);
     });
   }
 
