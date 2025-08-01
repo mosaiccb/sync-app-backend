@@ -153,6 +153,43 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     const laborData = await fetchParBrinkLaborData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
     console.log(`🔍 DEBUGGING ALIGNMENT: Retrieved ${laborData.length} labor punches`);
 
+    // Debug: Log raw data before processing
+    console.log(`🔍 RAW DATA DEBUG: Sales orders count: ${salesData.length}`);
+    if (salesData.length > 0) {
+      console.log(`🔍 RAW DATA DEBUG: First sales order time: ${salesData[0].firstsendtime?.DateTime}`);
+      console.log(`🔍 RAW DATA DEBUG: Last sales order time: ${salesData[salesData.length - 1].firstsendtime?.DateTime}`);
+      // Log a few sample sales times
+      salesData.slice(0, 3).forEach((order, index) => {
+        if (order.firstsendtime?.DateTime) {
+          const orderTime = new Date(order.firstsendtime.DateTime);
+          const mtHour = parseInt(orderTime.toLocaleString("en-US", { 
+            timeZone: "America/Denver",
+            hour: 'numeric',
+            hour12: false
+          }));
+          console.log(`🔍 RAW DATA DEBUG: Sales order ${index + 1}: UTC ${order.firstsendtime.DateTime} → MT Hour ${mtHour}:00, Total: $${order.Total}`);
+        }
+      });
+    }
+    
+    console.log(`🔍 RAW DATA DEBUG: Labor shifts count: ${laborData.length}`);
+    if (laborData.length > 0) {
+      console.log(`🔍 RAW DATA DEBUG: First labor shift time: ${laborData[0]['local Time']}`);
+      console.log(`🔍 RAW DATA DEBUG: Last labor shift time: ${laborData[laborData.length - 1]['local Time']}`);
+      // Log a few sample labor times
+      laborData.slice(0, 3).forEach((shift, index) => {
+        if (shift['local Time']) {
+          const shiftTime = new Date(shift['local Time']);
+          const mtHour = parseInt(shiftTime.toLocaleString("en-US", { 
+            timeZone: "America/Denver",
+            hour: 'numeric',
+            hour12: false
+          }));
+          console.log(`🔍 RAW DATA DEBUG: Labor shift ${index + 1}: UTC ${shift['local Time']} → MT Hour ${mtHour}:00, Hours: ${shift.hoursWorked}, Rate: $${shift.payRate}`);
+        }
+      });
+    }
+
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
     const hourlyLabor = processHourlyLaborData(laborData);
