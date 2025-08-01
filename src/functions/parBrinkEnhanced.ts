@@ -149,10 +149,13 @@ async function callParBrinkSoapAPI(
                     const minutesWorked = shiftXml.match(/<MinutesWorked>([^<]+)<\/MinutesWorked>/)?.[1];
                     const payRate = shiftXml.match(/<PayRate>([^<]+)<\/PayRate>/)?.[1];
                     
-                    // Parse start time
-                    const startTimeMatch = shiftXml.match(/<StartTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
-                    // Parse end time
-                    const endTimeMatch = shiftXml.match(/<EndTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+                    // Remove breaks section to avoid matching break times instead of shift times
+                    const shiftWithoutBreaks = shiftXml.replace(/<Breaks>[\s\S]*?<\/Breaks>/g, '');
+                    
+                    // Parse start time from cleaned shift XML
+                    const startTimeMatch = shiftWithoutBreaks.match(/<StartTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+                    // Parse end time from cleaned shift XML  
+                    const endTimeMatch = shiftWithoutBreaks.match(/<EndTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
                     
                     if (employeeId && id) {
                         shifts.push({
