@@ -143,10 +143,15 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     context.log(`Current local time date: ${currentLocalDate}`);
     context.log(`Using business date: ${targetDate} (${businessDate ? 'provided' : 'calculated'})`);
     context.log(`Using timezone offset: ${offsetMinutes} minutes`);
+    
+    console.log(`🔍 DEBUGGING ALIGNMENT: Fetching sales data for business date: ${targetDate}`);
     const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
+    console.log(`🔍 DEBUGGING ALIGNMENT: Retrieved ${salesData.length} sales orders`);
     
     // Fetch labor data from PAR Brink using the same access token
+    console.log(`🔍 DEBUGGING ALIGNMENT: Fetching labor data for business date: ${targetDate}`);
     const laborData = await fetchParBrinkLaborData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
+    console.log(`🔍 DEBUGGING ALIGNMENT: Retrieved ${laborData.length} labor punches`);
 
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
@@ -400,7 +405,14 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
           // Convert hour string to Date objects for this specific hour block
           const hourNum = parseInt(hour.split(':')[0]);
           
-          // Create hour boundaries in the same timezone as the punch data
+          // Extract hour from punch start time using same method as sales data
+          const punchHour = parseInt(punchStart.toLocaleString("en-US", { 
+            timeZone: "America/Denver",
+            hour: 'numeric',
+            hour12: false
+          }));
+          
+          // Create hour boundaries in Mountain Time (same as sales processing)
           const hourStart = new Date(punchStart);
           hourStart.setHours(hourNum, 0, 0, 0);
           
@@ -427,9 +439,9 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
             if (punch.payRate && punch.payRate > 0) {
               const laborCost = overlapHours * punch.payRate;
               hourlyData[hour].laborCost += laborCost;
-              console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}`);
+              console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch hour: ${punchHour}`);
             } else {
-              console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded from cost calculation)`);
+              console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded from cost calculation), punch hour: ${punchHour}`);
             }
           }
         });
