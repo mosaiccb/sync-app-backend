@@ -152,6 +152,43 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     const hourlySales = processHourlySalesData(salesData);
     const hourlyLabor = processHourlyLaborData(laborData);
 
+    // Debug: Log raw data to identify alignment issues
+    console.log(`🔍 RAW DATA DEBUG: Sales orders count: ${salesData.length}`);
+    if (salesData.length > 0) {
+      console.log(`🔍 RAW DATA DEBUG: First sales order time: ${salesData[0].firstsendtime?.DateTime}`);
+      console.log(`🔍 RAW DATA DEBUG: Last sales order time: ${salesData[salesData.length - 1].firstsendtime?.DateTime}`);
+      
+      // Log first few sales orders with timezone conversion
+      salesData.slice(0, 3).forEach((order, index) => {
+        if (order.firstsendtime?.DateTime) {
+          const orderTime = new Date(order.firstsendtime.DateTime);
+          const mountainTimeHour = parseInt(orderTime.toLocaleString("en-US", { 
+            timeZone: "America/Denver",
+            hour: 'numeric',
+            hour12: false
+          }));
+          console.log(`🔍 RAW DATA DEBUG: Sales order ${index + 1}: UTC ${order.firstsendtime.DateTime} → MT Hour ${mountainTimeHour}:00, Total: $${order.Total}`);
+        }
+      });
+    }
+    
+    console.log(`🔍 RAW DATA DEBUG: Labor shifts count: ${laborData.length}`);
+    if (laborData.length > 0) {
+      console.log(`🔍 RAW DATA DEBUG: First labor shift time: ${laborData[0]['local Time']}`);
+      console.log(`🔍 RAW DATA DEBUG: Last labor shift time: ${laborData[laborData.length - 1]['local Time']}`);
+      
+      // Log first few labor shifts with timezone conversion
+      laborData.slice(0, 3).forEach((shift, index) => {
+        const shiftTime = new Date(shift['local Time']);
+        const mountainTimeHour = parseInt(shiftTime.toLocaleString("en-US", { 
+          timeZone: "America/Denver",
+          hour: 'numeric',
+          hour12: false
+        }));
+        console.log(`🔍 RAW DATA DEBUG: Labor shift ${index + 1}: UTC ${shift['local Time']} → MT Hour ${mountainTimeHour}:00, Hours: ${shift.hoursWorked}, Rate: $${shift.payRate}`);
+      });
+    }
+
     // Calculate totals and metrics
     const totalSales = hourlySales.reduce((sum, hour) => sum + hour.sales, 0);
     const totalGuests = hourlySales.reduce((sum, hour) => sum + hour.guests, 0);
@@ -492,34 +529,28 @@ function parseShiftsFromXML(xmlData: string): PunchDetail[] {
         const payRate = parseFloat(shiftXml.match(/<PayRate>([^<]+)<\/PayRate>/)?.[1] || '0');
         const minutesWorked = parseInt(shiftXml.match(/<MinutesWorked>([^<]+)<\/MinutesWorked>/)?.[1] || '0');
 
-        if (employeeId && businessDate && startTime) {
-          // Create punch detail record matching expected interface
-          const punchDetail: PunchDetail = {
+        // Add debug logging to see shift data
+        console.log(`🔍 SHIFT PARSING DEBUG: Employee ${employeeId}, Start: ${startTime}, End: ${endTime}, Minutes: ${minutesWorked}, PayRate: $${payRate}`);
+
+        if (employeeId && businessDate && startTime && minutesWorked > 0) {
+          // Create ONE shift record per employee shift (not separate IN/OUT punches)
+          // This represents the complete shift with all the hours worked
+          const shiftRecord: PunchDetail = {
             punchdate: businessDate,
             'cost center 1': '', // Could be extracted from Job/Cost Center if available
-            Type: endTime && endTime !== '0001-01-01T00:00:00Z' ? 'OUT' : 'IN',
+            Type: 'SHIFT', // Mark as complete shift, not individual punch
             'employee Id': employeeId,
             username: '', // Not available in shift data
             firstName: '', // Not available in shift data  
             lastName: '', // Not available in shift data
             SourceType: 'PAR Brink',
             timeZone: 'America/Denver', // Mountain Time for PAR Brink locations
-            'local Time': startTime,
+            'local Time': startTime, // Shift start time for positioning
             payRate: payRate, // Add pay rate for labor cost calculations
-            hoursWorked: minutesWorked / 60 // Convert minutes to hours
+            hoursWorked: minutesWorked / 60 // Convert minutes to hours - this is the TOTAL hours for the shift
           };
           
-          shifts.push(punchDetail);
-          
-          // If there's an end time, add an OUT punch
-          if (endTime && endTime !== '0001-01-01T00:00:00Z') {
-            const outPunch: PunchDetail = {
-              ...punchDetail,
-              Type: 'OUT',
-              'local Time': endTime
-            };
-            shifts.push(outPunch);
-          }
+          shifts.push(shiftRecord);
         }
       } catch (error) {
         // Skip invalid shift records
