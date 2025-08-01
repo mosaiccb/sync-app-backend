@@ -457,7 +457,15 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         // Get Mountain Time (PAR Brink timezone) - based on PowerShell examples
         const now = new Date();
         const mtTime = new Date(now.getTime() - (7 * 60 * 60 * 1000)); // UTC-7 for Mountain Time
-        const mTimeDay = businessDate || mtTime.toISOString().split('T')[0];
+        
+        // Extract just the date part (YYYY-MM-DD) from businessDate if provided
+        let mTimeDay: string;
+        if (businessDate) {
+            // If businessDate is in ISO format (2025-08-01T00:00:00.000Z), extract just the date part
+            mTimeDay = businessDate.split('T')[0];
+        } else {
+            mTimeDay = mtTime.toISOString().split('T')[0];
+        }
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -746,8 +754,14 @@ async function getParBrinkTills(businessDate?: string, accessToken?: string, loc
         // Get current time for business date calculation
         const now = new Date();
         
-        // Use provided business date or current date
-        const mTimeDay = businessDate || now.toISOString().split('T')[0];
+        // Extract just the date part (YYYY-MM-DD) from businessDate if provided
+        let mTimeDay: string;
+        if (businessDate) {
+            // If businessDate is in ISO format (2025-08-01T00:00:00.000Z), extract just the date part
+            mTimeDay = businessDate.split('T')[0];
+        } else {
+            mTimeDay = now.toISOString().split('T')[0];
+        }
 
         console.log(`PAR Brink SOAP GetTills request for cash tips - Business Date: ${mTimeDay}`);
 
