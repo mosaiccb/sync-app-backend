@@ -438,27 +438,39 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
           }
         }
         
-        // Process each hour the shift spans
+        // Process each hour the shift spans with proper hour calculations
         hoursToProcess.forEach(hourNum => {
           const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
           
           if (hourlyData[hourKey]) {
-            // For now, distribute hours evenly across the span
-            // This is simplified - in reality we'd need precise minute-level calculation
-            const totalHoursSpanned = hoursToProcess.length;
-            const hoursForThisHour = (punch.hoursWorked || 0) / totalHoursSpanned;
+            // Calculate actual hours worked during this specific hour block
+            // Create precise hour boundaries for this hour in Mountain Time
+            const hourStart = new Date(punchStartUTC);
+            hourStart.setUTCHours(hourNum + 6, 0, 0, 0); // Convert MT hour to UTC for calculation (+6 for MDT)
             
-            // Labor Hours: Include ALL employees (hourly + salaried)
-            hourlyData[hourKey].hoursWorked += hoursForThisHour;
-            hourlyData[hourKey].employeesWorking += 1;
+            const hourEnd = new Date(hourStart);
+            hourEnd.setUTCHours(hourNum + 7, 0, 0, 0); // Next hour boundary
             
-            // Labor Cost: Only include HOURLY employees (payRate > 0)
-            if (punch.payRate && punch.payRate > 0) {
-              const laborCost = hoursForThisHour * punch.payRate;
-              hourlyData[hourKey].laborCost += laborCost;
-              console.log(`Hourly employee at ${hourKey}: ${hoursForThisHour.toFixed(3)} hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
-            } else {
-              console.log(`Salaried employee at ${hourKey}: ${hoursForThisHour.toFixed(3)} hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+            // Calculate overlap between shift and this specific hour
+            const overlapStart = new Date(Math.max(punchStartUTC.getTime(), hourStart.getTime()));
+            const overlapEnd = new Date(Math.min(punchEndUTC.getTime(), hourEnd.getTime()));
+            const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
+            const overlapHours = overlapMillis / (1000 * 60 * 60);
+            
+            // Only process if there's actual overlap for this hour
+            if (overlapHours > 0) {
+              // Labor Hours: Include ALL employees (hourly + salaried) - precise overlap
+              hourlyData[hourKey].hoursWorked += overlapHours;
+              hourlyData[hourKey].employeesWorking += 1;
+              
+              // Labor Cost: Only include HOURLY employees (payRate > 0)
+              if (punch.payRate && punch.payRate > 0) {
+                const laborCost = overlapHours * punch.payRate;
+                hourlyData[hourKey].laborCost += laborCost;
+                console.log(`Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+              } else {
+                console.log(`Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+              }
             }
           }
         });
