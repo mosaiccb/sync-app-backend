@@ -397,31 +397,38 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
       try {
         if (!punch.hoursWorked || punch.hoursWorked <= 0) return;
         
-        const punchStart = new Date(punch['local Time']);
-        const punchEnd = new Date(punchStart.getTime() + (punch.hoursWorked * 60 * 60 * 1000));
+        // Convert punch times from UTC to Mountain Time to match sales data processing
+        const punchStartUTC = new Date(punch['local Time']);
+        const punchEndUTC = new Date(punchStartUTC.getTime() + (punch.hoursWorked * 60 * 60 * 1000));
+        
+        // Convert to Mountain Time using the same method as sales data
+        const punchStartMT = new Date(punchStartUTC.toLocaleString("en-US", { timeZone: "America/Denver" }));
+        const punchEndMT = new Date(punchEndUTC.toLocaleString("en-US", { timeZone: "America/Denver" }));
+        
+        console.log(`🔍 TIMEZONE DEBUG: Punch UTC: ${punchStartUTC.toISOString()}, MT: ${punchStartMT.toISOString()}`);
         
         // Process this shift across ALL hours it spans
         hours.forEach(hour => {
           // Convert hour string to Date objects for this specific hour block
           const hourNum = parseInt(hour.split(':')[0]);
           
-          // Extract hour from punch start time using same method as sales data
-          const punchHour = parseInt(punchStart.toLocaleString("en-US", { 
+          // Extract hour from punch start time for debugging
+          const punchHourMT = parseInt(punchStartMT.toLocaleString("en-US", { 
             timeZone: "America/Denver",
             hour: 'numeric',
             hour12: false
           }));
           
-          // Create hour boundaries in Mountain Time (same as sales processing)
-          const hourStart = new Date(punchStart);
+          // Create hour boundaries in Mountain Time
+          const hourStart = new Date(punchStartMT);
           hourStart.setHours(hourNum, 0, 0, 0);
           
           const hourEnd = new Date(hourStart);
           hourEnd.setHours(hourNum + 1, 0, 0, 0);
           
           // Calculate overlap between shift and this hour block
-          const overlapStart = new Date(Math.max(punchStart.getTime(), hourStart.getTime()));
-          const overlapEnd = new Date(Math.min(punchEnd.getTime(), hourEnd.getTime()));
+          const overlapStart = new Date(Math.max(punchStartMT.getTime(), hourStart.getTime()));
+          const overlapEnd = new Date(Math.min(punchEndMT.getTime(), hourEnd.getTime()));
           const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
           const overlapHours = overlapMillis / (1000 * 60 * 60);
           
@@ -439,9 +446,9 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
             if (punch.payRate && punch.payRate > 0) {
               const laborCost = overlapHours * punch.payRate;
               hourlyData[hour].laborCost += laborCost;
-              console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch hour: ${punchHour}`);
+              console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch hour MT: ${punchHourMT}`);
             } else {
-              console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded from cost calculation), punch hour: ${punchHour}`);
+              console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded from cost calculation), punch hour MT: ${punchHourMT}`);
             }
           }
         });
