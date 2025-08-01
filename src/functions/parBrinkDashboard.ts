@@ -371,7 +371,7 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
   // Initialize hourly buckets (24-hour format)
-  const hours = [];
+  const hours: string[] = [];
   for (let i = 0; i <= 23; i++) {
     hours.push(`${i.toString().padStart(2, '0')}:00`);
   }
@@ -390,46 +390,52 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   if (punches && punches.length > 0) {
     punches.forEach(punch => {
       try {
-        const punchDate = new Date(punch['local Time']);
-        // Convert to Mountain Time before extracting hour
-        const mountainTimeHour = parseInt(punchDate.toLocaleString("en-US", { 
-          timeZone: "America/Denver",
-          hour: 'numeric',
-          hour12: false
-        }));
-        const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
+        if (!punch.hoursWorked || punch.hoursWorked <= 0) return;
         
-        if (hourlyData[hour] && punch.hoursWorked) {
-          // Calculate the portion of the shift that occurred within this specific hour
-          const punchStart = new Date(punch['local Time']);
-          const punchEnd = new Date(punchStart.getTime() + (punch.hoursWorked * 60 * 60 * 1000));
+        const punchStart = new Date(punch['local Time']);
+        const punchEnd = new Date(punchStart.getTime() + (punch.hoursWorked * 60 * 60 * 1000));
+        
+        // Process this shift across ALL hours it spans
+        hours.forEach(hour => {
+          // Convert hour string to Date objects for this specific hour block
+          const hourNum = parseInt(hour.split(':')[0]);
           
-          // Current hour boundaries
-          const hourStart = new Date(punchDate);
-          hourStart.setMinutes(0, 0, 0);
-          const hourEnd = new Date(hourStart.getTime() + (60 * 60 * 1000));
+          // Create hour boundaries in the same timezone as the punch data
+          const hourStart = new Date(punchStart);
+          hourStart.setHours(hourNum, 0, 0, 0);
+          
+          const hourEnd = new Date(hourStart);
+          hourEnd.setHours(hourNum + 1, 0, 0, 0);
           
           // Calculate overlap between shift and this hour block
           const overlapStart = new Date(Math.max(punchStart.getTime(), hourStart.getTime()));
           const overlapEnd = new Date(Math.min(punchEnd.getTime(), hourEnd.getTime()));
-          const overlapHours = Math.max(0, (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60));
+          const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
+          const overlapHours = overlapMillis / (1000 * 60 * 60);
           
-          // Labor Hours: Include ALL employees (hourly + salaried) - but only the overlapping portion
-          hourlyData[hour].hoursWorked += overlapHours;
-          hourlyData[hour].employeesWorking += 1;
-          
-          // Labor Cost: Only include HOURLY employees (payRate > 0)
-          // Salaried employees contribute hours but not to labor cost
-          if (punch.payRate && punch.payRate > 0) {
-            const laborCost = overlapHours * punch.payRate;
-            hourlyData[hour].laborCost += laborCost;
-            console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${punch.hoursWorked.toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}`);
-          } else {
-            console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${punch.hoursWorked.toFixed(3)} total), $0 labor cost (excluded from cost calculation)`);
+          // Only process if there's actual overlap
+          if (overlapHours > 0) {
+            // Labor Hours: Include ALL employees (hourly + salaried) - but only the overlapping portion
+            hourlyData[hour].hoursWorked += overlapHours;
+            
+            // Only count employee once per hour (not multiple times if they have multiple shifts)
+            // This is a simplification - in reality we'd need to track unique employees per hour
+            hourlyData[hour].employeesWorking += 1;
+            
+            // Labor Cost: Only include HOURLY employees (payRate > 0)
+            // Salaried employees contribute hours but not to labor cost
+            if (punch.payRate && punch.payRate > 0) {
+              const laborCost = overlapHours * punch.payRate;
+              hourlyData[hour].laborCost += laborCost;
+              console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}`);
+            } else {
+              console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded from cost calculation)`);
+            }
           }
-        }
+        });
       } catch (error) {
         // Skip invalid punch records
+        console.error('Error processing punch record:', error);
       }
     });
 
