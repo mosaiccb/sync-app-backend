@@ -423,9 +423,9 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
           if (punch.payRate && punch.payRate > 0) {
             const laborCost = overlapHours * punch.payRate;
             hourlyData[hour].laborCost += laborCost;
-            console.log(`Hourly employee at ${hour}: ${punch.hoursWorked} hours, $${punch.payRate}/hour = $${laborCost}`);
+            console.log(`Hourly employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${punch.hoursWorked.toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}`);
           } else {
-            console.log(`Salaried employee at ${hour}: ${punch.hoursWorked} hours, $0 labor cost (excluded from cost calculation)`);
+            console.log(`Salaried employee at ${hour}: ${overlapHours.toFixed(3)} overlap hours (of ${punch.hoursWorked.toFixed(3)} total), $0 labor cost (excluded from cost calculation)`);
           }
         }
       } catch (error) {
