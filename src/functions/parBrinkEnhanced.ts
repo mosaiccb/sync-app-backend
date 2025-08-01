@@ -149,13 +149,10 @@ async function callParBrinkSoapAPI(
                     const minutesWorked = shiftXml.match(/<MinutesWorked>([^<]+)<\/MinutesWorked>/)?.[1];
                     const payRate = shiftXml.match(/<PayRate>([^<]+)<\/PayRate>/)?.[1];
                     
-                    // Remove breaks section to avoid matching break times instead of shift times
-                    const shiftWithoutBreaks = shiftXml.replace(/<Breaks>[\s\S]*?<\/Breaks>/g, '');
-                    
-                    // Parse start time from cleaned shift XML
-                    const startTimeMatch = shiftWithoutBreaks.match(/<StartTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
-                    // Parse end time from cleaned shift XML  
-                    const endTimeMatch = shiftWithoutBreaks.match(/<EndTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+                    // Parse start time
+                    const startTimeMatch = shiftXml.match(/<StartTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
+                    // Parse end time
+                    const endTimeMatch = shiftXml.match(/<EndTime[^>]*>[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
                     
                     if (employeeId && id) {
                         shifts.push({
@@ -460,15 +457,7 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         // Get Mountain Time (PAR Brink timezone) - based on PowerShell examples
         const now = new Date();
         const mtTime = new Date(now.getTime() - (7 * 60 * 60 * 1000)); // UTC-7 for Mountain Time
-        
-        // Extract just the date part (YYYY-MM-DD) from businessDate if provided
-        let mTimeDay: string;
-        if (businessDate) {
-            // If businessDate is in ISO format (2025-08-01T00:00:00.000Z), extract just the date part
-            mTimeDay = businessDate.split('T')[0];
-        } else {
-            mTimeDay = mtTime.toISOString().split('T')[0];
-        }
+        const mTimeDay = businessDate || mtTime.toISOString().split('T')[0];
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -757,14 +746,8 @@ async function getParBrinkTills(businessDate?: string, accessToken?: string, loc
         // Get current time for business date calculation
         const now = new Date();
         
-        // Extract just the date part (YYYY-MM-DD) from businessDate if provided
-        let mTimeDay: string;
-        if (businessDate) {
-            // If businessDate is in ISO format (2025-08-01T00:00:00.000Z), extract just the date part
-            mTimeDay = businessDate.split('T')[0];
-        } else {
-            mTimeDay = now.toISOString().split('T')[0];
-        }
+        // Use provided business date or current date
+        const mTimeDay = businessDate || now.toISOString().split('T')[0];
 
         console.log(`PAR Brink SOAP GetTills request for cash tips - Business Date: ${mTimeDay}`);
 
@@ -922,22 +905,8 @@ export async function laborShifts(request: HttpRequest, context: InvocationConte
         context.log('PAR Brink labor-shifts error:', error);
         
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        // Return proper HTTP status codes instead of 501
-        let statusCode = 500; // Default to internal server error
-        
-        if (errorMessage.includes('authentication') || errorMessage.includes('401')) {
-            statusCode = 401; // Unauthorized
-        } else if (errorMessage.includes('access token') || errorMessage.includes('credentials')) {
-            statusCode = 403; // Forbidden
-        } else if (errorMessage.includes('unreachable') || errorMessage.includes('timeout')) {
-            statusCode = 503; // Service unavailable
-        } else if (errorMessage.includes('not found') || errorMessage.includes('404')) {
-            statusCode = 404; // Not found
-        }
-        
         return {
-            status: statusCode,
+            status: 501,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
@@ -945,10 +914,8 @@ export async function laborShifts(request: HttpRequest, context: InvocationConte
             body: JSON.stringify({
                 success: false,
                 error: errorMessage,
-                statusCode: statusCode,
                 timestamp: new Date().toISOString(),
-                source: 'par-brink-api',
-                details: 'Check PAR Brink access token and location token configuration'
+                source: 'par-brink-api'
             })
         };
     }
@@ -1195,157 +1162,12 @@ export async function tills(request: HttpRequest, context: InvocationContext): P
     }
 }
 
-// New endpoint for hourly labor details
-export async function laborHourDetails(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    try {
-        context.log('PAR Brink labor-hour-details endpoint called');
-        
-        let accessToken, locationToken, businessDate, hour;
-        
-        if (request.method === 'POST') {
-            try {
-                const body = await request.text();
-                const requestData = JSON.parse(body);
-                accessToken = requestData.accessToken;
-                locationToken = requestData.locationToken;
-                businessDate = requestData.businessDate;
-                hour = requestData.hour; // e.g., "14:00" for 2 PM
-            } catch (parseError) {
-                context.log('Error parsing request body:', parseError);
-                return {
-                    status: 400,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    body: JSON.stringify({
-                        success: false,
-                        error: 'Invalid request body'
-                    })
-                };
-            }
-        }
-        
-        if (!hour) {
-            return {
-                status: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify({
-                    success: false,
-                    error: 'Hour parameter is required (e.g., "14:00")'
-                })
-            };
-        }
-        
-        context.log('Labor hour details request:', { accessToken: !!accessToken, locationToken: !!locationToken, businessDate, hour });
-        
-        // Get all shifts for the business date
-        const shifts = await getParBrinkClockedInEmployees(accessToken, locationToken, businessDate);
-        
-        // Filter shifts that were active during the requested hour
-        const hourlyShifts = shifts.filter(shift => {
-            if (!shift.StartTime) return false;
-            
-            const shiftStart = new Date(shift.StartTime);
-            const shiftHour = shiftStart.getUTCHours(); // Use UTC hours for consistency
-            const requestedHour = parseInt(hour.split(':')[0]);
-            
-            // Include if shift started during this hour or was ongoing
-            if (shift.EndTime) {
-                const shiftEnd = new Date(shift.EndTime);
-                const shiftEndHour = shiftEnd.getUTCHours();
-                return shiftHour <= requestedHour && shiftEndHour >= requestedHour;
-            } else {
-                // Ongoing shift (no end time) - include if started before or during this hour
-                return shiftHour <= requestedHour;
-            }
-        });
-        
-        // Get employee details for each shift
-        const employees = await getParBrinkEmployees(accessToken, locationToken);
-        
-        // Combine shift and employee data
-        const hourlyEmployeeDetails = hourlyShifts.map(shift => {
-            const employee = employees.find(emp => emp.EmployeeId === shift.EmployeeId);
-            
-            return {
-                employeeId: shift.EmployeeId,
-                firstName: employee?.FirstName || 'Unknown',
-                lastName: employee?.LastName || '',
-                position: employee?.Position || 'Staff',
-                hoursWorked: Math.min(shift.Hours || 0, 1.0), // Cap at 1 hour per hour block
-                laborCost: (shift.Hours || 0) * (employee?.HourlyRate || 15.0), // Use employee rate or default
-                clockInTime: shift.StartTime,
-                clockOutTime: shift.EndTime,
-                shiftId: shift.ShiftId,
-                status: shift.Status
-            };
-        });
-        
-        // Calculate totals
-        const totalHours = hourlyEmployeeDetails.reduce((sum, emp) => sum + emp.hoursWorked, 0);
-        const totalCost = hourlyEmployeeDetails.reduce((sum, emp) => sum + emp.laborCost, 0);
-        
-        return {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-            },
-            body: JSON.stringify({
-                success: true,
-                data: {
-                    hour: hour,
-                    employees: hourlyEmployeeDetails,
-                    totalHours: totalHours,
-                    totalCost: totalCost,
-                    salesForHour: 0, // Would need separate sales API call
-                    laborPercentage: 0 // Would be calculated with sales data
-                },
-                timestamp: new Date().toISOString(),
-                source: 'par-brink-api'
-            })
-        };
-        
-    } catch (error) {
-        context.log('PAR Brink labor-hour-details error:', error);
-        
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        return {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            body: JSON.stringify({
-                success: false,
-                error: errorMessage,
-                timestamp: new Date().toISOString(),
-                source: 'par-brink-api'
-            })
-        };
-    }
-}
-
 // Register the function endpoints - matching frontend API expectations
 app.http('par-brink-labor-shifts', {
     methods: ['GET', 'POST', 'OPTIONS'],
     authLevel: 'anonymous',
     route: 'par-brink/labor-shifts',
     handler: laborShifts
-});
-
-app.http('par-brink-labor-hour-details', {
-    methods: ['GET', 'POST', 'OPTIONS'],
-    authLevel: 'anonymous',
-    route: 'par-brink/labor-hour-details',
-    handler: laborHourDetails
 });
 
 app.http('par-brink-employees', {

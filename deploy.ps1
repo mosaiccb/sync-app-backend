@@ -309,9 +309,7 @@ Write-Host "💡 VS Code deployment handles the build process correctly" -Foregr
 Write-Host "`n⏳ Press any key to continue after deployment is complete..." -ForegroundColor Yellow
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 Write-Host "✅ Continuing script execution..." -ForegroundColor Green
-write-host "🛠️  Deployment in progress..." -ForegroundColor Cyan
-write-host "🔄  Sleeping for 3 minutes to allow for complete deployment..." -ForegroundColor Yellow
-Start-Sleep -Seconds 180
+
 # Test the deployment
 Write-Host "`n🧪 Testing deployment..." -ForegroundColor Cyan
 Start-Sleep -Seconds 5

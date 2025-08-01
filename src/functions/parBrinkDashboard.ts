@@ -143,52 +143,10 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     context.log(`Current local time date: ${currentLocalDate}`);
     context.log(`Using business date: ${targetDate} (${businessDate ? 'provided' : 'calculated'})`);
     context.log(`Using timezone offset: ${offsetMinutes} minutes`);
-    
-    console.log(`🔍 DEBUGGING ALIGNMENT: Fetching sales data for business date: ${targetDate}`);
     const salesData = await fetchParBrinkSalesData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
-    console.log(`🔍 DEBUGGING ALIGNMENT: Retrieved ${salesData.length} sales orders`);
     
     // Fetch labor data from PAR Brink using the same access token
-    console.log(`🔍 DEBUGGING ALIGNMENT: Fetching labor data for business date: ${targetDate}`);
     const laborData = await fetchParBrinkLaborData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
-    console.log(`🔍 DEBUGGING ALIGNMENT: Retrieved ${laborData.length} labor punches`);
-
-    // Debug: Log raw data before processing
-    console.log(`🔍 RAW DATA DEBUG: Sales orders count: ${salesData.length}`);
-    if (salesData.length > 0) {
-      console.log(`🔍 RAW DATA DEBUG: First sales order time: ${salesData[0].firstsendtime?.DateTime}`);
-      console.log(`🔍 RAW DATA DEBUG: Last sales order time: ${salesData[salesData.length - 1].firstsendtime?.DateTime}`);
-      // Log a few sample sales times
-      salesData.slice(0, 3).forEach((order, index) => {
-        if (order.firstsendtime?.DateTime) {
-          const orderTime = new Date(order.firstsendtime.DateTime);
-          const mtHour = parseInt(orderTime.toLocaleString("en-US", { 
-            timeZone: "America/Denver",
-            hour: 'numeric',
-            hour12: false
-          }));
-          console.log(`🔍 RAW DATA DEBUG: Sales order ${index + 1}: UTC ${order.firstsendtime.DateTime} → MT Hour ${mtHour}:00, Total: $${order.Total}`);
-        }
-      });
-    }
-    
-    console.log(`🔍 RAW DATA DEBUG: Labor shifts count: ${laborData.length}`);
-    if (laborData.length > 0) {
-      console.log(`🔍 RAW DATA DEBUG: First labor shift time: ${laborData[0]['local Time']}`);
-      console.log(`🔍 RAW DATA DEBUG: Last labor shift time: ${laborData[laborData.length - 1]['local Time']}`);
-      // Log a few sample labor times
-      laborData.slice(0, 3).forEach((shift, index) => {
-        if (shift['local Time']) {
-          const shiftTime = new Date(shift['local Time']);
-          const mtHour = parseInt(shiftTime.toLocaleString("en-US", { 
-            timeZone: "America/Denver",
-            hour: 'numeric',
-            hour12: false
-          }));
-          console.log(`🔍 RAW DATA DEBUG: Labor shift ${index + 1}: UTC ${shift['local Time']} → MT Hour ${mtHour}:00, Hours: ${shift.hoursWorked}, Rate: $${shift.payRate}`);
-        }
-      });
-    }
 
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
@@ -413,7 +371,7 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
   // Initialize hourly buckets (24-hour format)
-  const hours: string[] = [];
+  const hours = [];
   for (let i = 0; i <= 23; i++) {
     hours.push(`${i.toString().padStart(2, '0')}:00`);
   }
@@ -432,95 +390,32 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   if (punches && punches.length > 0) {
     punches.forEach(punch => {
       try {
-        if (!punch.hoursWorked || punch.hoursWorked <= 0) return;
-        
-        // Process punch times using the EXACT SAME method as sales data
-        const punchStartUTC = new Date(punch['local Time']);
-        const punchEndUTC = new Date(punchStartUTC.getTime() + (punch.hoursWorked * 60 * 60 * 1000));
-        
-        // Extract Mountain Time hours directly using the same method as sales processing
-        const punchStartHourMT = parseInt(punchStartUTC.toLocaleString("en-US", { 
+        const punchDate = new Date(punch['local Time']);
+        // Convert to Mountain Time before extracting hour
+        const mountainTimeHour = parseInt(punchDate.toLocaleString("en-US", { 
           timeZone: "America/Denver",
           hour: 'numeric',
           hour12: false
         }));
+        const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
         
-        const punchEndHourMT = parseInt(punchEndUTC.toLocaleString("en-US", { 
-          timeZone: "America/Denver",
-          hour: 'numeric',
-          hour12: false
-        }));
-        
-        console.log(`🔍 TIMEZONE DEBUG: UTC: ${punchStartUTC.toISOString()} (${punchStartUTC.getHours()}:00) → MT Hour: ${punchStartHourMT}:00`);
-        
-        // Process this shift across ALL hours it spans in Mountain Time
-        // Determine which hours this shift covers based on Mountain Time
-        const startHour = punchStartHourMT;
-        const endHour = punchEndHourMT;
-        
-        // Handle shifts that cross midnight
-        let hoursToProcess: number[] = [];
-        if (endHour >= startHour) {
-          // Normal shift within same day
-          for (let h = startHour; h <= endHour; h++) {
-            hoursToProcess.push(h);
-          }
-        } else {
-          // Shift crosses midnight
-          for (let h = startHour; h <= 23; h++) {
-            hoursToProcess.push(h);
-          }
-          for (let h = 0; h <= endHour; h++) {
-            hoursToProcess.push(h);
+        if (hourlyData[hour] && punch.hoursWorked) {
+          // Labor Hours: Include ALL employees (hourly + salaried)
+          hourlyData[hour].hoursWorked += punch.hoursWorked;
+          hourlyData[hour].employeesWorking += 1;
+          
+          // Labor Cost: Only include HOURLY employees (payRate > 0)
+          // Salaried employees contribute hours but not to labor cost
+          if (punch.payRate && punch.payRate > 0) {
+            const laborCost = punch.hoursWorked * punch.payRate;
+            hourlyData[hour].laborCost += laborCost;
+            console.log(`Hourly employee at ${hour}: ${punch.hoursWorked} hours, $${punch.payRate}/hour = $${laborCost}`);
+          } else {
+            console.log(`Salaried employee at ${hour}: ${punch.hoursWorked} hours, $0 labor cost (excluded from cost calculation)`);
           }
         }
-        
-        // Process each hour the shift spans with proper hour calculations
-        hoursToProcess.forEach(hourNum => {
-          const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
-          
-          if (hourlyData[hourKey]) {
-            // Calculate actual hours worked during this specific hour block
-            // Create precise hour boundaries for this hour in UTC (since punch times are already UTC)
-            // We need to find the UTC time that corresponds to hourNum in Mountain Time
-            
-            // Get the date portion from the punch start time
-            const punchDate = new Date(punchStartUTC.getFullYear(), punchStartUTC.getMonth(), punchStartUTC.getDate());
-            
-            // Create Mountain Time hour boundary and convert to UTC
-            const hourStartMT = new Date(punchDate);
-            hourStartMT.setHours(hourNum, 0, 0, 0);
-            
-            // Convert Mountain Time to UTC by adding the offset (MDT = UTC-6, so add 6 hours)
-            const hourStartUTC = new Date(hourStartMT.getTime() + (6 * 60 * 60 * 1000));
-            const hourEndUTC = new Date(hourStartUTC.getTime() + (60 * 60 * 1000)); // Add 1 hour
-            
-            // Calculate overlap between shift and this specific hour
-            const overlapStart = new Date(Math.max(punchStartUTC.getTime(), hourStartUTC.getTime()));
-            const overlapEnd = new Date(Math.min(punchEndUTC.getTime(), hourEndUTC.getTime()));
-            const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
-            const overlapHours = overlapMillis / (1000 * 60 * 60);
-            
-            // Only process if there's actual overlap for this hour
-            if (overlapHours > 0) {
-              // Labor Hours: Include ALL employees (hourly + salaried) - precise overlap
-              hourlyData[hourKey].hoursWorked += overlapHours;
-              hourlyData[hourKey].employeesWorking += 1;
-              
-              // Labor Cost: Only include HOURLY employees (payRate > 0)
-              if (punch.payRate && punch.payRate > 0) {
-                const laborCost = overlapHours * punch.payRate;
-                hourlyData[hourKey].laborCost += laborCost;
-                console.log(`Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
-              } else {
-                console.log(`Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
-              }
-            }
-          }
-        });
       } catch (error) {
         // Skip invalid punch records
-        console.error('Error processing punch record:', error);
       }
     });
 
@@ -528,16 +423,30 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     hours.forEach(hour => {
       const data = hourlyData[hour];
       
-      // REMOVED PROBLEMATIC VALIDATION: Labor hours CAN exceed employee count in restaurants
-      // due to overlapping shifts, split shifts, multiple job codes, etc.
-      // The original validation was incorrectly capping real PAR Brink data.
+      // VALIDATION RULE 1: Labor hours cannot exceed number of employees * 1.0
+      // (Each employee can work at most 1 hour within any given hour block)
+      if (data.employeesWorking > 0 && data.hoursWorked > data.employeesWorking) {
+        console.warn(`Labor validation ERROR for ${hour}: ${data.hoursWorked} hours exceeds maximum possible ${data.employeesWorking} hours for ${data.employeesWorking} employees. Capping at employee count.`);
+        
+        // Calculate proportional reduction for labor cost
+        const hoursReductionRatio = data.employeesWorking / data.hoursWorked;
+        
+        data.hoursWorked = data.employeesWorking; // Cap at employee count
+        data.laborCost = data.laborCost * hoursReductionRatio; // Proportionally reduce cost
+      }
       
-      // VALIDATION RULE 2: Only validate extremely unrealistic scenarios (removed)
-      // Restaurant operations can have overlapping shifts, so hours can exceed employee count
+      // VALIDATION RULE 2: Labor hours cannot exceed 1.0 per employee per hour block
+      // This catches cases where individual punch records might be wrong
+      if (data.employeesWorking > 0) {
+        const maxPossibleHours = data.employeesWorking * 1.0;
+        if (data.hoursWorked > maxPossibleHours) {
+          console.warn(`Labor validation ERROR for ${hour}: ${data.hoursWorked} hours exceeds physical maximum of ${maxPossibleHours} hours.`);
+          data.hoursWorked = maxPossibleHours;
+        }
+      }
       
       // VALIDATION RULE 3: Wage validation (restaurant industry rates)
-      // Only validate wages for meaningful hour blocks (>= 0.25 hours to avoid false alarms from small overlaps)
-      if (data.hoursWorked >= 0.25 && data.laborCost > 0) {
+      if (data.hoursWorked > 0 && data.laborCost > 0) {
         const avgWage = data.laborCost / data.hoursWorked;
         if (avgWage < 2.0) {
           console.warn(`Labor validation WARNING for ${hour}: Average wage of $${avgWage.toFixed(2)}/hour is unusually low, even for tipped employees.`);
@@ -578,21 +487,10 @@ function parseShiftsFromXML(xmlData: string): PunchDetail[] {
       try {
         const employeeId = shiftXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
         const businessDate = shiftXml.match(/<BusinessDate>([^<]+)<\/BusinessDate>/)?.[1];
-        
-        // Extract SHIFT start/end times (not break times)
-        // First, remove all Break sections to avoid matching break times
-        const shiftWithoutBreaks = shiftXml.replace(/<Breaks>[\s\S]*?<\/Breaks>/g, '');
-        
-        // Now extract StartTime and EndTime from the cleaned shift XML
-        const shiftStartMatch = shiftWithoutBreaks.match(/<StartTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
-        const shiftEndMatch = shiftWithoutBreaks.match(/<EndTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
-        
-        const startTime = shiftStartMatch?.[1];
-        const endTime = shiftEndMatch?.[1];
+        const startTime = shiftXml.match(/<StartTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/)?.[1];
+        const endTime = shiftXml.match(/<EndTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/)?.[1];
         const payRate = parseFloat(shiftXml.match(/<PayRate>([^<]+)<\/PayRate>/)?.[1] || '0');
         const minutesWorked = parseInt(shiftXml.match(/<MinutesWorked>([^<]+)<\/MinutesWorked>/)?.[1] || '0');
-
-        console.log(`🔍 SHIFT PARSING DEBUG: Employee ${employeeId}, Start: ${startTime}, End: ${endTime}, Minutes: ${minutesWorked}, PayRate: $${payRate}`);
 
         if (employeeId && businessDate && startTime) {
           // Create punch detail record matching expected interface
