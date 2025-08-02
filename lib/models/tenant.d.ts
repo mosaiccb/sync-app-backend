@@ -168,23 +168,23 @@ export declare const TenantQuerySchema: z.ZodEffects<z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     limit: number;
     offset: number;
-    active?: boolean | undefined;
     search?: string | undefined;
+    active?: boolean | undefined;
 }, {
+    search?: string | undefined;
     active?: boolean | undefined;
     limit?: number | undefined;
     offset?: number | undefined;
-    search?: string | undefined;
 }>, {
     active: true | undefined;
     limit: number;
     offset: number;
     search?: string | undefined;
 }, {
+    search?: string | undefined;
     active?: boolean | undefined;
     limit?: number | undefined;
     offset?: number | undefined;
-    search?: string | undefined;
 }>;
 export interface TenantConfig {
     id: string;
