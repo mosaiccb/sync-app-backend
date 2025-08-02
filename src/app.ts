@@ -12,3 +12,5 @@ import './functions/tenantsV2';
 import './functions/testDbConnection';
 import './functions/thirdPartyAPISimple';
 import './functions/ukgReadyAPI';
+import './functions/storeAdmin';
+import './functions/weatherDashboard';
