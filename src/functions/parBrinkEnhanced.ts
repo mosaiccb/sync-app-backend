@@ -457,7 +457,18 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
         // Get Mountain Time (PAR Brink timezone) - based on PowerShell examples
         const now = new Date();
         const mtTime = new Date(now.getTime() - (7 * 60 * 60 * 1000)); // UTC-7 for Mountain Time
-        const mTimeDay = businessDate || mtTime.toISOString().split('T')[0];
+        
+        // Extract just the date part to avoid duplicate timestamps
+        let mTimeDay: string;
+        if (businessDate) {
+            // If businessDate is provided, extract just the date part (remove any existing time)
+            mTimeDay = businessDate.split('T')[0];
+            console.log(`Using provided business date: ${businessDate} -> extracted date: ${mTimeDay}`);
+        } else {
+            // Use current Mountain Time date
+            mTimeDay = mtTime.toISOString().split('T')[0];
+            console.log(`Using current Mountain Time date: ${mTimeDay}`);
+        }
 
         const soapBody = `
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://www.brinksoftware.com/webservices/labor/v2" xmlns:sys="http://schemas.datacontract.org/2004/07/System">
@@ -470,6 +481,10 @@ async function getParBrinkClockedInEmployees(accessToken?: string, locationToken
                     </v2:GetShifts>
                 </soapenv:Body>
             </soapenv:Envelope>`;
+        
+        console.log(`PAR Brink SOAP GetShifts request to https://api11.brinkpos.net/labor2.svc: ${soapBody}`);
+        console.log(`PAR Brink SOAP GetShifts - Location Token being sent: ${locationToken}`);
+        console.log(`PAR Brink SOAP GetShifts - AccessToken provided: ${!!accessToken}`);
         
         const result = await callParBrinkSoapAPI('Labor2.svc', 'GetShifts', soapBody, accessToken, locationToken);
         
