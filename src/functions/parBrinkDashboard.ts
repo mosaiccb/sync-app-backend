@@ -124,6 +124,11 @@ interface DashboardResponse {
         issuesFound: number;
         description: string;
       };
+      employeeConstraintValidation: {
+        enabled: boolean;
+        issuesFound: number;
+        description: string;
+      };
     };
   };
 }
@@ -216,12 +221,16 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     // Fetch labor data from PAR Brink using the same access token
     const laborData = await fetchParBrinkLaborData(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
 
+    // **CRITICAL VALIDATION**: Fetch total clocked-in employees for validation constraint
+    const totalClockedInEmployees = await fetchTotalClockedInEmployees(accessToken, locationToken, targetDate, offsetMinutes, locationInfo.timezone, context);
+    context.log(`🏢 TOTAL CLOCKED-IN EMPLOYEES: ${totalClockedInEmployees} employees currently working (dashboard hourly counts will be capped at this number)`);
+
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
-    const hourlyLabor = processHourlyLaborData(laborData);
+    const hourlyLabor = processHourlyLaborData(laborData, totalClockedInEmployees);
 
     // **COMPREHENSIVE DATA VALIDATION REPORT**
-    const validationResults = validateDashboardData(hourlySales, hourlyLabor, locationInfo.timezone, context);
+    const validationResults = validateDashboardData(hourlySales, hourlyLabor, locationInfo.timezone, totalClockedInEmployees, context);
 
     // Debug: Log raw data to identify alignment issues
     console.log(`🔍 RAW DATA DEBUG: Sales orders count: ${salesData.length}`);
@@ -424,6 +433,110 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
   }
 }
 
+/**
+ * Fetch total clocked-in employees from PAR Brink for validation constraint
+ */
+async function fetchTotalClockedInEmployees(accessToken: string, locationToken: string, businessDate: string, offsetMinutes: number, _timezone: string, context: InvocationContext): Promise<number> {
+  try {
+    context.log('🔍 Fetching total clocked-in employees for validation constraint...');
+    
+    // Use the parBrinkClockedIn function logic to get current clocked-in employees
+    // This mirrors the same API call as the "who's clocked in" dashboard
+    const businessDateForAPI = businessDate.includes('T') ? businessDate.split('T')[0] : businessDate;
+    
+    const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="http://www.brinksoftware.com/webservices/labor/v2">
+        <soap:Header />
+        <soap:Body>
+            <lab:GetPunchDetailsByBusinessDate>
+                <lab:businessDate>${businessDateForAPI}</lab:businessDate>
+                <lab:timezoneOffsetMinutes>${offsetMinutes}</lab:timezoneOffsetMinutes>
+            </lab:GetPunchDetailsByBusinessDate>
+        </soap:Body>
+    </soap:Envelope>`;
+
+    const response = await axios.post('https://api11.brinkpos.net/Labor2.svc', soapBody, { 
+      headers: {
+        'AccessToken': accessToken,
+        'LocationToken': locationToken,
+        'Content-Type': 'text/xml',
+        'SOAPAction': 'http://www.brinksoftware.com/webservices/labor/v2/ILaborWebService2/GetPunchDetailsByBusinessDate'
+      },
+      timeout: 20000 
+    });
+
+    // Parse punch data to count currently clocked-in employees
+    const xmlData = response.data;
+    const currentlyWorking = parseCurrentlyWorkingEmployees(xmlData);
+    
+    context.log(`🏢 CLOCKED-IN VALIDATION: Found ${currentlyWorking} employees currently working`);
+    return currentlyWorking;
+
+  } catch (error) {
+    context.error('Error fetching total clocked-in employees:', error);
+    // Return a reasonable default to avoid blocking the dashboard
+    // This ensures the validation doesn't fail completely if the clocked-in API is unavailable
+    return 50; // Reasonable maximum for most restaurant locations
+  }
+}
+
+/**
+ * Parse punch XML to count currently working employees
+ */
+function parseCurrentlyWorkingEmployees(xmlData: string): number {
+  try {
+    const now = new Date();
+    const employeeStatuses = new Map<string, { isWorking: boolean; lastPunchTime: Date }>();
+    
+    // Extract punch details using regex
+    const punchMatches = xmlData.match(/<PunchDetail>[\s\S]*?<\/PunchDetail>/g) || [];
+    
+    punchMatches.forEach(punchXml => {
+      try {
+        const employeeId = punchXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
+        const localTime = punchXml.match(/<LocalTime>([^<]+)<\/LocalTime>/)?.[1];
+        const punchType = punchXml.match(/<Type>([^<]+)<\/Type>/)?.[1];
+        
+        if (employeeId && localTime && punchType) {
+          const punchTime = new Date(localTime);
+          
+          // Only consider punches from today
+          if (punchTime.toDateString() === now.toDateString()) {
+            const currentStatus = employeeStatuses.get(employeeId) || { isWorking: false, lastPunchTime: new Date(0) };
+            
+            // Only update if this punch is more recent
+            if (punchTime > currentStatus.lastPunchTime) {
+              if (punchType.toLowerCase().includes('in')) {
+                currentStatus.isWorking = true;
+              } else if (punchType.toLowerCase().includes('out')) {
+                currentStatus.isWorking = false;
+              }
+              currentStatus.lastPunchTime = punchTime;
+              employeeStatuses.set(employeeId, currentStatus);
+            }
+          }
+        }
+      } catch (error) {
+        // Skip invalid punch records
+      }
+    });
+    
+    // Count employees who are currently working
+    let workingCount = 0;
+    employeeStatuses.forEach(status => {
+      if (status.isWorking) {
+        workingCount++;
+      }
+    });
+    
+    return workingCount;
+    
+  } catch (error) {
+    console.error('Error parsing currently working employees:', error);
+    return 0;
+  }
+}
+
 function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
   const hourlyData: { [hour: string]: HourlySalesData } = {};
 
@@ -577,6 +690,7 @@ function validateDashboardData(
   salesData: HourlySalesData[], 
   laborData: HourlyLaborData[], 
   timezone: string, 
+  totalClockedInEmployees: number,
   context: InvocationContext
 ): DashboardResponse['validationResults'] {
   if (!DATA_VALIDATION_CONFIG.enableComprehensiveReporting) {
@@ -661,15 +775,25 @@ function validateDashboardData(
     }
   });
   
-  // Check labor data for future entries
+  // **CRITICAL VALIDATION**: Check labor data for ANY future entries - this should NEVER happen
+  let futureLaborHoursDetected = 0;
   laborData.forEach(hourData => {
     const hourNum = parseInt(hourData.hour.split(':')[0]);
-    if (hourNum > currentHour && hourData.laborCost > 0) {
-      context.warn(`🚨 FUTURE LABOR DATA: ${hourData.hour} contains $${hourData.laborCost} labor cost but is future time`);
-      futureDataIssues++;
-      totalValidationIssues++;
+    if (hourNum > currentHour) {
+      if (hourData.laborCost > 0 || hourData.hoursWorked > 0 || hourData.employeesWorking > 0) {
+        context.warn(`🚨 CRITICAL: FUTURE LABOR DATA DETECTED: ${hourData.hour} has labor activity in the future!`);
+        context.warn(`   Future hours: ${hourData.hoursWorked.toFixed(2)}, Cost: $${hourData.laborCost.toFixed(2)}, Employees: ${hourData.employeesWorking}`);
+        context.warn(`   This violates the fundamental rule: labor cannot exist in the future!`);
+        futureLaborHoursDetected++;
+        futureDataIssues++;
+        totalValidationIssues++;
+      }
     }
   });
+  
+  if (futureLaborHoursDetected > 0) {
+    recommendedActions.push(`CRITICAL: Remove ${futureLaborHoursDetected} future labor entries - this should never happen`);
+  }
   
   // **VALIDATION 3: BUSINESS LOGIC VALIDATION**
   context.log('🏪 Validating business logic rules...');
@@ -697,7 +821,28 @@ function validateDashboardData(
     recommendedActions.push('Review pricing strategy or order composition');
   }
   
-  // **VALIDATION 4: DATA COMPLETENESS**
+  // **VALIDATION 4: CLOCKED-IN EMPLOYEE CONSTRAINT VALIDATION**
+  context.log('🏢 Validating employee count constraints...');
+  let employeeConstraintViolations = 0;
+  
+  laborData.forEach(hourData => {
+    const hourNum = parseInt(hourData.hour.split(':')[0]);
+    
+    // Skip future hours
+    if (hourNum > currentHour) return;
+    
+    if (hourData.employeesWorking > totalClockedInEmployees) {
+      context.warn(`🚨 EMPLOYEE CONSTRAINT VIOLATION: ${hourData.hour} reports ${hourData.employeesWorking} employees but only ${totalClockedInEmployees} are clocked in`);
+      employeeConstraintViolations++;
+      totalValidationIssues++;
+      
+      if (!recommendedActions.includes('Review employee clocking procedures')) {
+        recommendedActions.push('Review employee clocking procedures - hourly counts exceed clocked-in total');
+      }
+    }
+  });
+  
+  // **VALIDATION 5: DATA COMPLETENESS**
   context.log('📋 Validating data completeness...');
   let completenessIssues = 0;
   
@@ -713,7 +858,7 @@ function validateDashboardData(
     dataQualityScore -= 15;
   }
   
-  // **VALIDATION 5: OPERATIONAL INSIGHTS**
+  // **VALIDATION 6: OPERATIONAL INSIGHTS**
   context.log('🎯 Generating operational insights...');
   
   if (peakSalesHour.sales > 0) {
@@ -728,6 +873,7 @@ function validateDashboardData(
   dataQualityScore -= (alignmentIssues * 5);
   dataQualityScore -= (futureDataIssues * 10);
   dataQualityScore -= (businessLogicIssues * 3);
+  dataQualityScore -= (employeeConstraintViolations * 8); // High penalty for constraint violations
   dataQualityScore -= (completenessIssues * 5);
   dataQualityScore = Math.max(0, dataQualityScore);
   
@@ -737,6 +883,8 @@ function validateDashboardData(
   context.log(`  ⚠️  Total Issues Found: ${totalValidationIssues}`);
   context.log(`  🏪 Sales Hours Active: ${activeSalesHours}`);
   context.log(`  👥 Labor Hours Active: ${activeLaborHours}`);
+  context.log(`  🏢 Total Clocked-In Employees: ${totalClockedInEmployees}`);
+  context.log(`  🚨 Employee Constraint Violations: ${employeeConstraintViolations}`);
   context.log(`  💰 Total Sales: $${totalSales.toFixed(2)}`);
   context.log(`  💸 Total Labor Cost: $${totalLaborCost.toFixed(2)}`);
   context.log(`  📈 Labor Percentage: ${laborPercentage.toFixed(1)}%`);
@@ -772,7 +920,7 @@ function validateDashboardData(
       futureDataBlocking: {
         enabled: DATA_VALIDATION_CONFIG.enableFutureDataBlocking,
         issuesFound: futureDataIssues,
-        description: "Prevents future sales and labor data from appearing in real-time dashboard"
+        description: "Prevents future sales and labor data from appearing in real-time dashboard - NO labor hours allowed for future times"
       },
       salesValidation: {
         enabled: DATA_VALIDATION_CONFIG.enableSalesValidation,
@@ -793,12 +941,17 @@ function validateDashboardData(
         enabled: DATA_VALIDATION_CONFIG.enableBusinessLogicValidation,
         issuesFound: businessLogicIssues,
         description: "Validates restaurant industry standards and operational metrics"
+      },
+      employeeConstraintValidation: {
+        enabled: true,
+        issuesFound: employeeConstraintViolations,
+        description: `Ensures hourly employee counts never exceed total clocked-in employees (${totalClockedInEmployees})`
       }
     }
   };
 }
 
-function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
+function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees: number): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
   // Get current Mountain Time hour to filter out future labor data - ENHANCED DEBUGGING
@@ -828,6 +981,7 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   console.log(`  Current MT: ${currentMTFormatted}`);
   console.log(`  Current MT Hour: ${currentMountainHour}:00`);
   console.log(`  Filtering out ALL hours > ${currentMountainHour}`);
+  console.log(`🏢 EMPLOYEE CONSTRAINT: Max employees per hour capped at ${totalClockedInEmployees} (from clocked-in API)`);
 
   // Initialize hourly buckets (24-hour format)
   const hours = [];
@@ -1003,6 +1157,48 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         validationIssues++;
       }
       
+      // **VALIDATION RULE 2.5: FUTURE LABOR HOURS PROHIBITION** - Absolutely no labor hours allowed for future times
+      if (hourNum > currentMountainHour) {
+        if (data.hoursWorked > 0 || data.laborCost > 0 || data.employeesWorking > 0) {
+          console.warn(`🚨 FUTURE LABOR DETECTED: ${hour} has labor data for future time - this should NEVER happen!`);
+          console.warn(`   Future labor hours: ${data.hoursWorked.toFixed(2)} hours`);
+          console.warn(`   Future labor cost: $${data.laborCost.toFixed(2)}`);
+          console.warn(`   Future employees: ${data.employeesWorking} employees`);
+          console.warn(`   FORCING ALL FUTURE LABOR TO ZERO - labor cannot exist in the future!`);
+          
+          data.hoursWorked = 0;
+          data.laborCost = 0;
+          data.employeesWorking = 0;
+          
+          validationIssues++;
+          correctionsMade++;
+        }
+        // Skip all other validations for future hours since they should always be zero
+        return;
+      }
+      
+      // **VALIDATION RULE 2.6: CLOCKED-IN EMPLOYEE CONSTRAINT** - Never exceed total employees currently working
+      if (data.employeesWorking > totalClockedInEmployees) {
+        console.warn(`🚨 EMPLOYEE COUNT VIOLATION: ${hour} has ${data.employeesWorking} employees but only ${totalClockedInEmployees} are clocked in - capping to maximum`);
+        console.warn(`   Before correction: ${data.employeesWorking} employees working in this hour`);
+        console.warn(`   After correction: ${totalClockedInEmployees} employees (capped to clocked-in total)`);
+        
+        // Proportionally reduce hours worked and labor cost when capping employee count
+        const reductionRatio = totalClockedInEmployees / data.employeesWorking;
+        const originalHours = data.hoursWorked;
+        const originalCost = data.laborCost;
+        
+        data.hoursWorked *= reductionRatio;
+        data.laborCost *= reductionRatio;
+        data.employeesWorking = totalClockedInEmployees;
+        
+        console.warn(`   Hours worked adjusted: ${originalHours.toFixed(2)} → ${data.hoursWorked.toFixed(2)} (ratio: ${reductionRatio.toFixed(3)})`);
+        console.warn(`   Labor cost adjusted: $${originalCost.toFixed(2)} → $${data.laborCost.toFixed(2)} (ratio: ${reductionRatio.toFixed(3)})`);
+        
+        validationIssues++;
+        correctionsMade++;
+      }
+      
       // **VALIDATION RULE 3: WAGE VALIDATION** - Restaurant industry rates with enhanced ranges
       if (data.hoursWorked >= 0.25 && data.laborCost > 0) {
         const avgWage = data.laborCost / data.hoursWorked;
@@ -1088,6 +1284,8 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
     console.log(`  🔒 Future hours blocked: ${futureHoursFound}`);
     console.log(`  🔧 Corrections applied: ${correctionsMade}`);
     console.log(`  🕒 Current MT hour: ${currentMountainHour}:00`);
+    console.log(`  🏢 Employee constraint: Max ${totalClockedInEmployees} employees per hour (from clocked-in API)`);
+    console.log(`  ⏰ Future labor rule: NO labor hours allowed for any time > ${currentMountainHour}:00`);
     
     if (validationIssues === 0) {
       console.log(`  🎉 All labor data passed validation!`);

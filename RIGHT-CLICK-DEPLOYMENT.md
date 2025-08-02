@@ -1,53 +1,62 @@
-# Right-Click Deployment - Frontend Data Validation Dashboard
+# Right-Click Deployment - Advanced Labor Validation System
 
-## ✅ **Latest Enhancement: Frontend Validation Dashboard Integration**
+## ✅ **Latest Enhancement: Employee Constraint & Future Labor Validation**
 
-**Latest Deployment:** August 1, 2025 @ 09:10 UTC  
-**Status:** ✅ **SUCCESSFUL** - Complete frontend data validation dashboard deployed
+**Latest Deployment:** August 1, 2025 @ 10:15 UTC  
+**Status:** ✅ **SUCCESSFUL** - Advanced labor validation system deployed
 
-# Right-Click Deployment - Enhanced Data Quality Validation
+### 🏢 **New Critical Validations Added:**
 
-## ✅ **Latest Enhancement: Advanced Data Quality Improvements**
+#### **1. Employee Count Constraint Validation** ✅ NEW
 
-**Latest Deployment:** August 1, 2025 @ 09:38 UTC  
-**Status:** ✅ **SUCCESSFUL** - Enhanced data quality validation and corrections deployed
+- **Feature**: Hourly employee counts can never exceed total clocked-in employees
+- **Implementation**: Fetches real-time clocked-in employee count from "Who's Clocked In" API
+- **Validation**: Caps hourly `employeesWorking` to maximum of currently clocked-in employees
+- **Auto-Correction**: Proportionally reduces labor hours and costs when capping employee counts
+- **Impact**: Ensures data integrity between clocked-in dashboard and labor dashboard
 
-### 🔧 **Data Quality Issues Fixed:**
+#### **2. Future Labor Hours Prohibition** ✅ NEW
 
-#### **1. Hour 24 Validation Issue** ✅ FIXED
+- **Rule**: ZERO labor hours allowed for any future time periods
+- **Implementation**: Comprehensive validation that future hours must have no labor activity
+- **Detection**: Identifies and blocks labor hours, costs, and employee counts for future times
+- **Auto-Correction**: Forces all future labor data to zero immediately
+- **Impact**: Eliminates impossible scenarios where labor exists in the future
 
-- **Problem**: System was processing "hour 24" which doesn't exist in 24-hour format
-- **Solution**: Added validation to convert hour 24 to hour 0 (midnight) and prevent invalid hours
-- **Impact**: Eliminates data processing errors for overnight shifts
+### 🔧 **Enhanced Data Quality Features:**
 
-#### **2. Low Labor Percentage Alert Enhancement** ✅ IMPROVED
+#### **Previous Hour 24 Validation** ✅ MAINTAINED
 
-- **Problem**: 13.7% labor percentage triggered false alarms
-- **Solution**: Enhanced validation to account for salaried employees not included in labor cost
-- **Impact**: More accurate labor percentage analysis with contextual recommendations
+- Converts invalid hour 24 to hour 0 (midnight)
+- Prevents data processing errors for overnight shifts
 
-#### **3. Sales-Labor Alignment Validation** ✅ ENHANCED
+#### **Labor Percentage Analysis** ✅ ENHANCED
 
-- **Problem**: Sales during off-hours (11:00) flagged as alignment issues
-- **Solution**: Added operating hours context (11:00-22:00) and delivery/takeout considerations
-- **Impact**: Reduces false positives while maintaining quality detection
+- Accounts for salaried employees not included in labor cost calculations
+- Provides contextual recommendations based on restaurant industry standards
 
-#### **4. Shift End Time Calculation** ✅ IMPROVED
+#### **Sales-Labor Alignment** ✅ IMPROVED
 
-- **Problem**: Some shifts incorrectly calculated end times beyond 23:59
-- **Solution**: Added proper boundary checks and debugging for shift span calculations
-- **Impact**: More accurate labor hour distribution across correct time periods
+- Operating hours context (11:00-22:00) for better validation accuracy
+- Reduces false positives during off-hours delivery/takeout periods
 
-### 🖥️ **New Frontend Features:**
+### 📊 **Validation Categories Updated:**
 
-#### **1. Visual Data Quality Dashboard** ✅ DEPLOYED
+1. **Future Data Blocking** - Now explicitly prohibits future labor hours
+2. **Sales Validation** - Order values and consistency checks
+3. **Labor Validation** - Wage ranges and hour distributions
+4. **Alignment Validation** - Sales-labor coverage gap detection
+5. **Business Logic Validation** - Restaurant industry standards
+6. **Employee Constraint Validation** ✅ NEW - Clocked-in employee limits
 
-- Real-time data quality scoring (0-100%) with color-coded status
-- Visual validation status indicators for all categories
-- Interactive metrics display with comprehensive details
-- Seamless integration with existing Sales & Labor Dashboard
+### 🖥️ **Frontend Integration:**
 
-#### **2. Validation Categories Display** ✅ DEPLOYED
+#### **Real-Time Validation Dashboard** ✅ DEPLOYED
+
+- Employee constraint violation alerts with current clocked-in count
+- Future labor hours detection with critical severity indicators
+- Comprehensive data quality scoring with all validation categories
+- Auto-correction notifications and recommended actions
 
 - **Future Data Blocking**: Shows if future data filtering is working
 - **Sales Validation**: Displays order value and consistency validation results
