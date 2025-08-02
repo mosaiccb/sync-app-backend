@@ -42,6 +42,18 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
     context.log('🏪 Loading enhanced store configurations from database...');
     const storeConfigs = await storeConfigService.getAllActiveStores(context);
     context.log(`📊 Retrieved ${storeConfigs.length} active stores from database`);
+    
+    // Debug: Check if we're getting real database data or fallback data
+    if (storeConfigs.length > 0) {
+      const firstStore = storeConfigs[0];
+      context.log(`🔍 First store debug - Name: "${firstStore.name}", Address: "${firstStore.address || 'NO ADDRESS'}", HasDailyHours: ${!!firstStore.dailyHours}`);
+      
+      // Check for McCaslin to see if we have corrected data
+      const mccaslin = storeConfigs.find(store => store.name.toLowerCase().includes('mccaslin'));
+      if (mccaslin) {
+        context.log(`🔍 McCaslin store debug - Name: "${mccaslin.name}" (should be "McCaslin" not "McCastlin")`);
+      }
+    }
 
     const tenantService = new TenantDatabaseService();
     
