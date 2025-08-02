@@ -407,6 +407,15 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
 function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
+  // Get current Mountain Time hour to filter out future labor data
+  const currentMountainTime = new Date().toLocaleString("en-US", { 
+    timeZone: "America/Denver",
+    hour: 'numeric',
+    hour12: false
+  });
+  const currentMountainHour = parseInt(currentMountainTime);
+  console.log(`🕒 CURRENT TIME FILTER: Current Mountain Time hour is ${currentMountainHour}:00 - filtering out future labor data`);
+
   // Initialize hourly buckets (24-hour format)
   const hours = [];
   for (let i = 0; i <= 23; i++) {
@@ -471,30 +480,27 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         }
         
         // Process each hour the shift spans with proper hour calculations
-        hoursToProcess.forEach(hourNum => {
+        // **CRITICAL FIX**: Filter out future hours BEFORE processing any labor data
+        const allowedHours = hoursToProcess.filter(hourNum => hourNum <= currentMountainHour);
+        
+        if (allowedHours.length === 0) {
+          console.log(`⏭️ FUTURE FILTER: Entire shift ${punchStartHourMT}:00-${punchEndHourMT}:00 is in the future - skipping completely`);
+          return; // Skip this entire shift if all hours are in the future
+        }
+        
+        console.log(`📊 SHIFT PROCESSING: Processing shift ${punchStartHourMT}:00-${punchEndHourMT}:00, allowed hours: ${allowedHours.join(',')}, filtered out future hours`);
+        
+        allowedHours.forEach(hourNum => {
           const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
           
           if (hourlyData[hourKey]) {
-            // Calculate actual hours worked during this specific hour block
-            // Create precise hour boundaries for this hour in UTC (since punch times are already UTC)
-            // We need to find the UTC time that corresponds to hourNum in Mountain Time
+            // **FIXED CALCULATION**: Proportionally distribute labor only across allowed (non-future) hours
+            const totalHoursInShift = punch.hoursWorked || 0;
+            const allowedHoursCount = allowedHours.length;
+            const hoursPerHour = totalHoursInShift / allowedHoursCount;
             
-            // Get the date portion from the punch start time
-            const punchDate = new Date(punchStartUTC.getFullYear(), punchStartUTC.getMonth(), punchStartUTC.getDate());
-            
-            // Create Mountain Time hour boundary and convert to UTC
-            const hourStartMT = new Date(punchDate);
-            hourStartMT.setHours(hourNum, 0, 0, 0);
-            
-            // Convert Mountain Time to UTC by adding the offset (MDT = UTC-6, so add 6 hours)
-            const hourStartUTC = new Date(hourStartMT.getTime() + (6 * 60 * 60 * 1000));
-            const hourEndUTC = new Date(hourStartUTC.getTime() + (60 * 60 * 1000)); // Add 1 hour
-            
-            // Calculate overlap between shift and this specific hour
-            const overlapStart = new Date(Math.max(punchStartUTC.getTime(), hourStartUTC.getTime()));
-            const overlapEnd = new Date(Math.min(punchEndUTC.getTime(), hourEndUTC.getTime()));
-            const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
-            const overlapHours = overlapMillis / (1000 * 60 * 60);
+            // Use this corrected distribution for non-future hours only
+            const overlapHours = hoursPerHour;
             
             // Only process if there's actual overlap for this hour
             if (overlapHours > 0) {
@@ -506,9 +512,9 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
               if (punch.payRate && punch.payRate > 0) {
                 const laborCost = overlapHours * punch.payRate;
                 hourlyData[hourKey].laborCost += laborCost;
-                console.log(`Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+                console.log(`Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
               } else {
-                console.log(`Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${(punch.hoursWorked || 0).toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+                console.log(`Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
               }
             }
           }
