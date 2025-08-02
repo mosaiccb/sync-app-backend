@@ -475,26 +475,16 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
           const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
           
           if (hourlyData[hourKey]) {
-            // Calculate actual hours worked during this specific hour block
-            // Create precise hour boundaries for this hour in UTC (since punch times are already UTC)
-            // We need to find the UTC time that corresponds to hourNum in Mountain Time
+            // Simplified approach: Calculate the fraction of the total shift that falls in this hour
+            // This avoids complex timezone boundary calculations
             
-            // Get the date portion from the punch start time
-            const punchDate = new Date(punchStartUTC.getFullYear(), punchStartUTC.getMonth(), punchStartUTC.getDate());
+            // For a shift that spans multiple hours, divide the total hours proportionally
+            const totalHoursInShift = punch.hoursWorked || 0;
+            const hoursInThisSpan = hoursToProcess.length;
+            const hoursPerHour = totalHoursInShift / hoursInThisSpan;
             
-            // Create Mountain Time hour boundary and convert to UTC
-            const hourStartMT = new Date(punchDate);
-            hourStartMT.setHours(hourNum, 0, 0, 0);
-            
-            // Convert Mountain Time to UTC by adding the offset (MDT = UTC-6, so add 6 hours)
-            const hourStartUTC = new Date(hourStartMT.getTime() + (6 * 60 * 60 * 1000));
-            const hourEndUTC = new Date(hourStartUTC.getTime() + (60 * 60 * 1000)); // Add 1 hour
-            
-            // Calculate overlap between shift and this specific hour
-            const overlapStart = new Date(Math.max(punchStartUTC.getTime(), hourStartUTC.getTime()));
-            const overlapEnd = new Date(Math.min(punchEndUTC.getTime(), hourEndUTC.getTime()));
-            const overlapMillis = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
-            const overlapHours = overlapMillis / (1000 * 60 * 60);
+            // Use this simplified distribution for now
+            const overlapHours = hoursPerHour;
             
             // Only process if there's actual overlap for this hour
             if (overlapHours > 0) {
