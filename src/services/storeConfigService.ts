@@ -21,23 +21,10 @@ interface StoreConfig {
   state: string;           // State abbreviation
   address?: string;        // Optional: full address
   phone?: string;          // Optional: store phone
-  storeurl?: string;       // Optional: MOD Pizza website URL
-  googleMapsUrl?: string;  // Optional: Google Maps URL
   manager?: string;        // Optional: store manager
   region?: string;         // Optional: for multi-region expansion
   isActive: boolean;       // Whether store is currently operational
   lastUpdated: Date;       // When this record was last modified
-  dailyHours?: {           // Optional: detailed daily hours
-    monday: { open: string; close: string };
-    tuesday: { open: string; close: string };
-    wednesday: { open: string; close: string };
-    thursday: { open: string; close: string };
-    friday: { open: string; close: string };
-    saturday: { open: string; close: string };
-    sunday: { open: string; close: string };
-  };
-  openingHour?: number;    // Optional: general opening hour (for backward compatibility)
-  closingHour?: number;    // Optional: general closing hour (for backward compatibility)
 }
 
 interface StoreConfigCache {
@@ -88,30 +75,16 @@ class StoreConfigService {
    * Get all active stores (for dropdown lists, admin panels, etc.)
    */
   public async getAllActiveStores(context?: InvocationContext): Promise<StoreConfig[]> {
-    context?.log('🏪 StoreConfigService.getAllActiveStores() called');
     await this.ensureCacheValid(context);
     
     if (!this.cache) {
       context?.warn('Store cache unavailable, falling back to database');
-      const dbStores = await this.getAllStoresFromDatabase(context);
-      context?.log(`🔍 Database fallback returned ${dbStores.length} stores`);
-      return dbStores;
+      return await this.getAllStoresFromDatabase(context);
     }
 
-    const activeStores = Object.values(this.cache.stores)
+    return Object.values(this.cache.stores)
       .filter(store => store.isActive)
       .sort((a, b) => a.name.localeCompare(b.name));
-      
-    context?.log(`🔍 Cache returned ${activeStores.length} active stores from ${Object.keys(this.cache.stores).length} total cached stores`);
-    context?.log(`🔍 Cache last refreshed: ${this.cache.lastRefresh}`);
-    
-    // Debug first store from cache
-    if (activeStores.length > 0) {
-      const firstStore = activeStores[0];
-      context?.log(`🔍 First cached store - Name: "${firstStore.name}", Address: "${firstStore.address || 'NO ADDRESS'}"`);
-    }
-    
-    return activeStores;
   }
 
   /**
@@ -297,27 +270,18 @@ class StoreConfigService {
    */
   private async getAllStoresFromDatabase(context?: InvocationContext): Promise<StoreConfig[]> {
     try {
-      context?.log('🔍 getAllStoresFromDatabase: Attempting database connection...');
       // Import database service dynamically to avoid circular dependencies
       const { databaseStoreService } = await import('./databaseStoreService');
       
       // Try database first
       const stores = await databaseStoreService.getAllStores(context);
       context?.log(`📊 Retrieved ${stores.length} stores from SQL database`);
-      
-      // Debug first store from database
-      if (stores.length > 0) {
-        const firstStore = stores[0];
-        context?.log(`🔍 First DB store - Name: "${firstStore.name}", Address: "${firstStore.address || 'NO ADDRESS'}", Token: ${firstStore.token.substring(0, 10)}...`);
-      }
-      
       return stores;
       
     } catch (error) {
-      context?.error('❌ Database query failed, falling back to hardcoded data:', error);
+      context?.warn('Database query failed, falling back to hardcoded data:', error);
       
       // Fallback to hardcoded data if database is unavailable
-      context?.log('🔍 Using hardcoded fallback data...');
       const hardcodedMapping = this.getHardcodedStores();
       const stores: StoreConfig[] = Object.entries(hardcodedMapping).map(([token, config]) => ({
         token,

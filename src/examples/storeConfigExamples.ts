@@ -125,10 +125,10 @@ export async function dashboardIntegrationExample(locationToken: string, context
   }
   
   // Step 2: Use store configuration in business logic
-  // const isOperatingHours = (hour: number) => {
-  //   // Could be enhanced to read from store.opening_hour / store.closing_hour from database
-  //   return hour >= 10 && hour <= 22; // Current hardcoded hours
-  // };
+  const isOperatingHours = (hour: number) => {
+    // Could be enhanced to read from store.opening_hour / store.closing_hour from database
+    return hour >= 10 && hour <= 22; // Current hardcoded hours
+  };
   
   // Step 3: Apply timezone-specific logic
   const currentLocalTime = new Date().toLocaleString("en-US", { 

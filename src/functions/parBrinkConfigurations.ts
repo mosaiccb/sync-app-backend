@@ -1,6 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { TenantDatabaseService } from '../services/TenantDatabaseService';
-import { storeConfigService } from '../services/storeConfigService';
 
 interface BrinkLocation {
   id: string;
@@ -8,12 +7,6 @@ interface BrinkLocation {
   locationId: string;
   token: string;
   isActive: boolean;
-  timezone?: string;        // Enhanced: Store timezone from database
-  address?: string;         // Enhanced: Store address from database
-  phone?: string;          // Enhanced: Store phone from database
-  storeurl?: string;       // Enhanced: MOD Pizza website URL
-  googleMapsUrl?: string;  // Enhanced: Google Maps URL
-  dailyHours?: any;        // Enhanced: Daily operating hours JSON
 }
 
 interface BrinkConfig {
@@ -22,6 +15,10 @@ interface BrinkConfig {
   selectedEndpoints: string[];
 }
 
+/**
+ * PAR Brink Configurations Function
+ * Returns available PAR Brink locations and configuration
+ */
 export async function parBrinkConfigurations(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   try {
     // Handle CORS preflight
@@ -38,112 +35,84 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
 
     context.log('PAR Brink Configurations request started');
 
-    // Get enhanced store configurations from database service
-    context.log('🏪 Loading enhanced store configurations from database...');
-    const storeConfigs = await storeConfigService.getAllActiveStores(context);
-    context.log(`📊 Retrieved ${storeConfigs.length} active stores from database`);
-    
-    // Debug: Check if we're getting real database data or fallback data
-    if (storeConfigs.length > 0) {
-      const firstStore = storeConfigs[0];
-      context.log(`🔍 First store debug - Name: "${firstStore.name}", Address: "${firstStore.address || 'NO ADDRESS'}", HasDailyHours: ${!!firstStore.dailyHours}`);
-      
-      // Check for McCaslin to see if we have corrected data
-      const mccaslin = storeConfigs.find(store => store.name.toLowerCase().includes('mccaslin'));
-      if (mccaslin) {
-        context.log(`🔍 McCaslin store debug - Name: "${mccaslin.name}" (should be "McCaslin" not "McCastlin")`);
-      }
-    }
-
     const tenantService = new TenantDatabaseService();
     
-    // Get PAR Brink access token from database or fallback to static
-    let accessToken = 'tBJ5haIyv0uRbbWQL6FbXw=='; // Default token
+    // Get PAR Brink configuration from database
+    let config: BrinkConfig;
     
     try {
       const apis = await tenantService.getThirdPartyAPIsByProvider('PAR Brink');
       
-      if (apis.length > 0 && apis[0].ConfigurationJson) {
+      if (apis.length === 0 || !apis[0].ConfigurationJson) {
+        context.log('No database configuration found, using static configuration');
+        config = getStaticBrinkConfiguration();
+      } else {
         const brinkApi = apis[0];
-        const dbConfig = JSON.parse(brinkApi.ConfigurationJson!);
-        
-        // Try to get real access token from Key Vault if KeyVaultSecretName exists
-        if (brinkApi.KeyVaultSecretName) {
-          try {
-            context.log(`Retrieving PAR Brink access token from Key Vault: ${brinkApi.KeyVaultSecretName}`);
-            
-            const { SecretClient } = await import('@azure/keyvault-secrets');
-            const { DefaultAzureCredential } = await import('@azure/identity');
-            
-            const credential = new DefaultAzureCredential();
-            const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
-            const keyVaultClient = new SecretClient(keyVaultUrl, credential);
-            
-            const secret = await keyVaultClient.getSecret(brinkApi.KeyVaultSecretName);
-            if (secret.value) {
-              context.log('Successfully retrieved PAR Brink access token from Key Vault for configurations');
-              accessToken = secret.value; // Override with real token
-            } else {
-              context.log('Key Vault secret exists but has no value, using configuration token');
-              accessToken = dbConfig.accessToken || accessToken;
+        if (brinkApi.ConfigurationJson) {
+          config = JSON.parse(brinkApi.ConfigurationJson);
+          
+          // Try to get real access token from Key Vault if KeyVaultSecretName exists
+          if (brinkApi.KeyVaultSecretName) {
+            try {
+              context.log(`Retrieving PAR Brink access token from Key Vault: ${brinkApi.KeyVaultSecretName}`);
+              
+              const { SecretClient } = await import('@azure/keyvault-secrets');
+              const { DefaultAzureCredential } = await import('@azure/identity');
+              
+              const credential = new DefaultAzureCredential();
+              const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
+              const keyVaultClient = new SecretClient(keyVaultUrl, credential);
+              
+              const secret = await keyVaultClient.getSecret(brinkApi.KeyVaultSecretName);
+              if (secret.value) {
+                context.log('Successfully retrieved PAR Brink access token from Key Vault for configurations');
+                config.accessToken = secret.value; // Override with real token
+              } else {
+                context.log('Key Vault secret exists but has no value, using configuration token');
+              }
+            } catch (keyVaultError) {
+              context.log('Key Vault retrieval failed in configurations, using configuration token:', keyVaultError);
             }
-          } catch (keyVaultError) {
-            context.log('Key Vault retrieval failed in configurations, using configuration token:', keyVaultError);
-            accessToken = dbConfig.accessToken || accessToken;
+          }
+          
+          // If still demo token, try environment variable
+          if (config.accessToken === 'demo-access-token') {
+            const envToken = process.env.PAR_BRINK_ACCESS_TOKEN;
+            if (envToken && envToken !== 'demo-access-token') {
+              context.log('Using PAR Brink access token from environment variable in configurations');
+              config.accessToken = envToken;
+            }
           }
         } else {
-          accessToken = dbConfig.accessToken || accessToken;
-        }
-        
-        // If still demo token, try environment variable
-        if (accessToken === 'demo-access-token') {
-          const envToken = process.env.PAR_BRINK_ACCESS_TOKEN;
-          if (envToken && envToken !== 'demo-access-token') {
-            context.log('Using PAR Brink access token from environment variable in configurations');
-            accessToken = envToken;
-          }
+          config = getStaticBrinkConfiguration();
         }
       }
     } catch (dbError) {
-      context.log('Database error retrieving PAR Brink config, using default token:', dbError);
+      context.log('Database error, falling back to static configuration:', dbError);
+      config = getStaticBrinkConfiguration();
     }
 
-    // Convert enhanced store configs to BrinkLocation format with all the new fields
-    const enhancedLocations: BrinkLocation[] = storeConfigs.map(store => ({
-      id: store.id,
-      name: store.name,
-      locationId: store.id,  // PAR Brink location ID
-      token: store.token,
-      isActive: store.isActive,
-      timezone: store.timezone,           // Enhanced: Store timezone
-      address: store.address,             // Enhanced: Store address
-      phone: store.phone,                 // Enhanced: Store phone
-      storeurl: store.storeurl,           // Enhanced: MOD Pizza website URL
-      googleMapsUrl: store.googleMapsUrl, // Enhanced: Google Maps URL
-      dailyHours: store.dailyHours        // Enhanced: Daily operating hours
-    }));
-
-    context.log(`🚀 Enhanced store configurations loaded with full data (addresses, phones, hours, maps, etc.)`);
+    // Filter to only return active locations and sanitize sensitive data
+    const sanitizedLocations = config.locations
+      .filter(loc => loc.isActive)
+      .map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        locationId: loc.locationId,
+        token: loc.token, // Frontend needs this for API calls
+        isActive: loc.isActive
+      }));
 
     const responseData = {
       success: true,
       data: {
-        accessToken: accessToken, // Frontend needs this for API calls
-        locations: enhancedLocations,
-        totalLocations: enhancedLocations.length,
-        enhanced: true, // Flag to indicate enhanced store data is available
-        features: {
-          timezones: true,
-          addresses: true,
-          phones: true,
-          websites: true,
-          googleMaps: true,
-          dailyHours: true
-        }
+        accessToken: config.accessToken, // Frontend needs this for API calls
+        locations: sanitizedLocations,
+        totalLocations: sanitizedLocations.length
       }
     };
 
-    context.log(`Returning ${enhancedLocations.length} enhanced PAR Brink locations with complete store data`);
+    context.log(`Returning ${sanitizedLocations.length} active PAR Brink locations`);
 
     return {
       status: 200,
@@ -155,48 +124,19 @@ export async function parBrinkConfigurations(request: HttpRequest, context: Invo
     };
 
   } catch (error) {
-    context.error('Error in PAR Brink Configurations (falling back to static):', error);
-    
-    // Fallback to static configuration if enhanced system fails
-    try {
-      const staticConfig = getStaticBrinkConfiguration();
-      const responseData = {
-        success: true,
-        data: {
-          accessToken: staticConfig.accessToken,
-          locations: staticConfig.locations,
-          totalLocations: staticConfig.locations.length,
-          enhanced: false, // Flag to indicate fallback mode
-          fallback: true
-        }
-      };
-      
-      context.log(`Fallback: Returning ${staticConfig.locations.length} static PAR Brink locations`);
-      
-      return {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        jsonBody: responseData
-      };
-    } catch (fallbackError) {
-      context.error('Even fallback failed:', fallbackError);
-      
-      return {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        jsonBody: {
-          success: false,
-          error: 'Internal server error',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
-    }
+    context.error('Error in PAR Brink Configurations:', error);
+    return {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: false,
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }
+    };
   }
 }
 

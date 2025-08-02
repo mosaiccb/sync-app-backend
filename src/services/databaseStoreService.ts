@@ -41,17 +41,14 @@ class DatabaseStoreService {
    * Get database configuration from environment variables
    */
   private getDatabaseConfig(): DatabaseConfig {
-    const sqlAuthType = process.env.SQL_AUTH_TYPE || 'default';
-    const authType = sqlAuthType === 'default' ? 'default' : 'azure-active-directory-msi-app-service';
-    
-    const config: DatabaseConfig = {
-      server: process.env.SQL_SERVER || 'your-server.database.windows.net',
-      database: process.env.SQL_DATABASE || 'sync-app-db',
+    return {
+      server: process.env.DB_SERVER || 'your-server.database.windows.net',
+      database: process.env.DB_NAME || 'sync-app-db',
       authentication: {
-        type: authType,
-        options: authType === 'default' ? {
-          userName: process.env.SQL_USERNAME,
-          password: process.env.SQL_PASSWORD
+        type: process.env.DB_AUTH_TYPE === 'msi' ? 'azure-active-directory-msi-app-service' : 'default',
+        options: process.env.DB_AUTH_TYPE !== 'msi' ? {
+          userName: process.env.DB_USER,
+          password: process.env.DB_PASSWORD
         } : undefined
       },
       options: {
@@ -59,18 +56,6 @@ class DatabaseStoreService {
         trustServerCertificate: false
       }
     };
-    
-    // Debug log (hide sensitive info)
-    console.log('🔍 Database config:', {
-      server: config.server,
-      database: config.database,
-      authType: config.authentication.type,
-      hasUsername: !!config.authentication.options?.userName,
-      hasPassword: !!config.authentication.options?.password,
-      envAuthType: sqlAuthType
-    });
-    
-    return config;
   }
 
   /**
@@ -127,12 +112,9 @@ class DatabaseStoreService {
           region,
           address,
           phone,
-          storeurl,
-          google_maps_url as googleMapsUrl,
-          daily_hours as dailyHoursJson,
           manager_name as manager,
-          opening_hour as openingHour,
-          closing_hour as closingHour,
+          opening_hour,
+          closing_hour,
           is_active as isActive,
           last_updated as lastUpdated
         FROM store_configurations 
@@ -142,36 +124,19 @@ class DatabaseStoreService {
       
       const result = await request.query(query);
       
-      const stores: StoreConfig[] = result.recordset.map(row => {
-        // Parse daily hours JSON if available
-        let dailyHours = undefined;
-        if (row.dailyHoursJson) {
-          try {
-            dailyHours = JSON.parse(row.dailyHoursJson);
-          } catch (error) {
-            context?.warn(`Failed to parse daily hours for store ${row.name}:`, error);
-          }
-        }
-
-        return {
-          token: row.token,
-          name: row.name,
-          id: row.id,
-          timezone: row.timezone,
-          state: row.state,
-          address: row.address,
-          phone: row.phone,
-          storeurl: row.storeurl,
-          googleMapsUrl: row.googleMapsUrl,
-          manager: row.manager,
-          region: row.region,
-          isActive: row.isActive,
-          lastUpdated: new Date(row.lastUpdated),
-          dailyHours: dailyHours,
-          openingHour: row.openingHour,
-          closingHour: row.closingHour
-        };
-      });
+      const stores: StoreConfig[] = result.recordset.map(row => ({
+        token: row.token,
+        name: row.name,
+        id: row.id,
+        timezone: row.timezone,
+        state: row.state,
+        address: row.address,
+        phone: row.phone,
+        manager: row.manager,
+        region: row.region,
+        isActive: row.isActive,
+        lastUpdated: new Date(row.lastUpdated)
+      }));
       
       context?.log(`📊 Retrieved ${stores.length} stores from database`);
       return stores;
@@ -202,12 +167,9 @@ class DatabaseStoreService {
           region,
           address,
           phone,
-          storeurl,
-          google_maps_url as googleMapsUrl,
-          daily_hours as dailyHoursJson,
           manager_name as manager,
-          opening_hour as openingHour,
-          closing_hour as closingHour,
+          opening_hour,
+          closing_hour,
           is_active as isActive,
           last_updated as lastUpdated
         FROM store_configurations 
@@ -221,17 +183,6 @@ class DatabaseStoreService {
       }
       
       const row = result.recordset[0];
-      
-      // Parse daily hours JSON if available
-      let dailyHours = undefined;
-      if (row.dailyHoursJson) {
-        try {
-          dailyHours = JSON.parse(row.dailyHoursJson);
-        } catch (error) {
-          context?.warn(`Failed to parse daily hours for store ${row.name}:`, error);
-        }
-      }
-
       return {
         token: row.token,
         name: row.name,
@@ -240,15 +191,10 @@ class DatabaseStoreService {
         state: row.state,
         address: row.address,
         phone: row.phone,
-        storeurl: row.storeurl,
-        googleMapsUrl: row.googleMapsUrl,
         manager: row.manager,
         region: row.region,
         isActive: row.isActive,
-        lastUpdated: new Date(row.lastUpdated),
-        dailyHours: dailyHours,
-        openingHour: row.openingHour,
-        closingHour: row.closingHour
+        lastUpdated: new Date(row.lastUpdated)
       };
       
     } catch (error) {
@@ -277,12 +223,9 @@ class DatabaseStoreService {
           region,
           address,
           phone,
-          storeurl,
-          google_maps_url as googleMapsUrl,
-          daily_hours as dailyHoursJson,
           manager_name as manager,
-          opening_hour as openingHour,
-          closing_hour as closingHour,
+          opening_hour,
+          closing_hour,
           is_active as isActive,
           last_updated as lastUpdated
         FROM store_configurations 
@@ -292,36 +235,19 @@ class DatabaseStoreService {
       
       const result = await request.query(query);
       
-      const stores: StoreConfig[] = result.recordset.map(row => {
-        // Parse daily hours JSON if available
-        let dailyHours = undefined;
-        if (row.dailyHoursJson) {
-          try {
-            dailyHours = JSON.parse(row.dailyHoursJson);
-          } catch (error) {
-            context?.warn(`Failed to parse daily hours for store ${row.name}:`, error);
-          }
-        }
-
-        return {
-          token: row.token,
-          name: row.name,
-          id: row.id,
-          timezone: row.timezone,
-          state: row.state,
-          address: row.address,
-          phone: row.phone,
-          storeurl: row.storeurl,
-          googleMapsUrl: row.googleMapsUrl,
-          manager: row.manager,
-          region: row.region,
-          isActive: row.isActive,
-          lastUpdated: new Date(row.lastUpdated),
-          dailyHours: dailyHours,
-          openingHour: row.openingHour,
-          closingHour: row.closingHour
-        };
-      });
+      const stores: StoreConfig[] = result.recordset.map(row => ({
+        token: row.token,
+        name: row.name,
+        id: row.id,
+        timezone: row.timezone,
+        state: row.state,
+        address: row.address,
+        phone: row.phone,
+        manager: row.manager,
+        region: row.region,
+        isActive: row.isActive,
+        lastUpdated: new Date(row.lastUpdated)
+      }));
       
       context?.log(`📊 Retrieved ${stores.length} stores for state ${state}`);
       return stores;
