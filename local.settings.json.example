@@ -15,7 +15,7 @@
     "AZURE_CLIENT_ID": "your-client-id-here",
     "AZURE_CLIENT_SECRET": "your-client-secret-here",
     "AZURE_TENANT_ID": "your-tenant-id-here",
-    "OPENWEATHER_API_KEY": "your-openweathermap-api-key-here"
+    "OPENWEATHER_API_KEY": "6d58702672d07a16c6e37bda249f8705"
   },
   "Host": {
     "LocalHttpPort": 7071,
