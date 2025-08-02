@@ -41,14 +41,17 @@ class DatabaseStoreService {
    * Get database configuration from environment variables
    */
   private getDatabaseConfig(): DatabaseConfig {
-    return {
-      server: process.env.DB_SERVER || 'your-server.database.windows.net',
-      database: process.env.DB_NAME || 'sync-app-db',
+    const sqlAuthType = process.env.SQL_AUTH_TYPE || 'default';
+    const authType = sqlAuthType === 'default' ? 'default' : 'azure-active-directory-msi-app-service';
+    
+    const config: DatabaseConfig = {
+      server: process.env.SQL_SERVER || 'your-server.database.windows.net',
+      database: process.env.SQL_DATABASE || 'sync-app-db',
       authentication: {
-        type: process.env.DB_AUTH_TYPE === 'msi' ? 'azure-active-directory-msi-app-service' : 'default',
-        options: process.env.DB_AUTH_TYPE !== 'msi' ? {
-          userName: process.env.DB_USER,
-          password: process.env.DB_PASSWORD
+        type: authType,
+        options: authType === 'default' ? {
+          userName: process.env.SQL_USERNAME,
+          password: process.env.SQL_PASSWORD
         } : undefined
       },
       options: {
@@ -56,6 +59,18 @@ class DatabaseStoreService {
         trustServerCertificate: false
       }
     };
+    
+    // Debug log (hide sensitive info)
+    console.log('🔍 Database config:', {
+      server: config.server,
+      database: config.database,
+      authType: config.authentication.type,
+      hasUsername: !!config.authentication.options?.userName,
+      hasPassword: !!config.authentication.options?.password,
+      envAuthType: sqlAuthType
+    });
+    
+    return config;
   }
 
   /**
