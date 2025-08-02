@@ -407,6 +407,15 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
 function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
+  // Get current Mountain Time hour to filter out future labor data
+  const currentMountainTime = new Date().toLocaleString("en-US", { 
+    timeZone: "America/Denver",
+    hour: 'numeric',
+    hour12: false
+  });
+  const currentMountainHour = parseInt(currentMountainTime);
+  console.log(`🕒 CURRENT TIME FILTER: Current Mountain Time hour is ${currentMountainHour}:00 - filtering out future labor data`);
+
   // Initialize hourly buckets (24-hour format)
   const hours = [];
   for (let i = 0; i <= 23; i++) {
@@ -473,6 +482,12 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         // Process each hour the shift spans with proper hour calculations
         hoursToProcess.forEach(hourNum => {
           const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
+          
+          // **CRITICAL FIX**: Skip future hours to prevent showing labor data for times that haven't happened yet
+          if (hourNum > currentMountainHour) {
+            console.log(`⏭️ FUTURE FILTER: Skipping hour ${hourNum}:00 (future) - current hour is ${currentMountainHour}:00`);
+            return; // Skip this future hour
+          }
           
           if (hourlyData[hourKey]) {
             // Simplified approach: Calculate the fraction of the total shift that falls in this hour
