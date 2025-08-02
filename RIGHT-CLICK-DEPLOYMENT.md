@@ -211,6 +211,7 @@ npm run build
 - ✅ **Single Shift Records:** No double-counting from IN/OUT punches
 - ✅ **Labor Cost Distribution:** Accurate hourly rates and cost calculations
 - ✅ **Debug Logging:** Comprehensive timezone and overlap debugging
+- ✅ **Future Hour Filtering:** Labor data only shown for current/past hours, not future
 
 ### ✅ **PAR Brink APIs Working Successfully:**
 
@@ -222,13 +223,15 @@ npm run build
 
 ```
 🔍 TIMEZONE DEBUG: UTC: 2025-08-01T22:59:53.091Z (22:00) → MT Hour: 16:00
+🕒 CURRENT TIME FILTER: Current Mountain Time hour is 19:00 - filtering out future labor data
+⏭️ FUTURE FILTER: Skipping hour 20:00 (future) - current hour is 19:00
+⏭️ FUTURE FILTER: Skipping hour 21:00 (future) - current hour is 19:00
 Hourly employee at 16:00: 0.629 overlap hours (of 2.517 total), $14.75/hour = $9.28, punch MT: 16:00-19:00
-Hourly employee at 17:00: 0.629 overlap hours (of 2.517 total), $14.75/hour = $9.28, punch MT: 16:00-19:00
 🔍 RAW DATA DEBUG: Sales orders count: 233
 🔍 RAW DATA DEBUG: Labor shifts count: 15
 ```
 
-**Note:** Timezone alignment is working perfectly. Sales data concentrated 10:00-19:00 MT, labor spans 9:00-22:00 MT (normal restaurant operations).
+**Note:** Real-time filtering now prevents future labor hours from appearing in dashboard. Labor data only shows for current and past hours.
 
 ---
 
