@@ -626,16 +626,25 @@ function validateDashboardData(
     // Skip future hours
     if (hourNum > currentHour) return;
     
-    // Check for sales without labor coverage
+    // Check for significant sales without labor coverage (excluding prep hours)
     if (salesHour.sales > 100 && laborHour.hoursWorked === 0) {
-      context.warn(`⚠️ ALIGNMENT ISSUE: ${salesHour.hour} has $${salesHour.sales} sales but no labor hours`);
-      alignmentIssues++;
-      totalValidationIssues++;
+      // Additional context: Check if this is during typical operating hours
+      if (hourNum >= 11 && hourNum <= 22) {
+        context.warn(`⚠️ ALIGNMENT ISSUE: ${salesHour.hour} has $${salesHour.sales} sales but no labor hours during operating hours`);
+        alignmentIssues++;
+        totalValidationIssues++;
+      } else {
+        context.log(`🔍 INFO: ${salesHour.hour} has $${salesHour.sales} sales but no labor hours (possibly delivery/takeout during off-hours)`);
+      }
     }
     
-    // Check for labor without sales (normal for prep/cleaning hours)
+    // Check for labor without sales (normal for prep/cleaning hours, especially early morning)
     if (laborHour.hoursWorked > 2 && salesHour.sales === 0) {
-      context.log(`🔍 INFO: ${salesHour.hour} has ${laborHour.hoursWorked.toFixed(1)} labor hours but no sales (prep/cleaning?)`);
+      if (hourNum < 11 || hourNum > 22) {
+        context.log(`🔍 INFO: ${salesHour.hour} has ${laborHour.hoursWorked.toFixed(1)} labor hours but no sales (prep/cleaning/closing)`);
+      } else {
+        context.log(`🔍 INFO: ${salesHour.hour} has ${laborHour.hoursWorked.toFixed(1)} labor hours but no sales during operating hours`);
+      }
     }
   });
   
@@ -672,9 +681,10 @@ function validateDashboardData(
     businessLogicIssues++;
     recommendedActions.push('Review labor scheduling and efficiency');
   } else if (laborPercentage < 15 && totalSales > 500) {
-    context.warn(`💸 LOW LABOR %: ${laborPercentage.toFixed(1)}% seems unusually low for restaurant operations`);
+    // Note: Low labor % could be due to salaried employees not being included in labor cost
+    context.warn(`💸 LOW LABOR %: ${laborPercentage.toFixed(1)}% seems low for restaurant operations (may exclude salaried staff)`);
     businessLogicIssues++;
-    recommendedActions.push('Verify labor data completeness');
+    recommendedActions.push('Verify labor data completeness - check if salaried staff are included');
   }
   
   // Average order value validation
@@ -858,19 +868,27 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
           hour12: false
         }));
         
-        console.log(`🔍 TIMEZONE DEBUG: UTC: ${punchStartUTC.toISOString()} (${punchStartUTC.getHours()}:00) → MT Hour: ${punchStartHourMT}:00`);
+        console.log(`🔍 TIMEZONE DEBUG: Start UTC: ${punchStartUTC.toISOString()} → MT Hour: ${punchStartHourMT}:00`);
+        console.log(`🔍 TIMEZONE DEBUG: End UTC: ${punchEndUTC.toISOString()} → MT Hour: ${punchEndHourMT}:00`);
+        console.log(`🔍 SHIFT DEBUG: Total hours worked: ${punch.hoursWorked}, Start: ${punchStartHourMT}:00, End: ${punchEndHourMT}:00`);
         
         // Process this shift across ALL hours it spans in Mountain Time
         // Determine which hours this shift covers based on Mountain Time
         const startHour = punchStartHourMT;
-        const endHour = punchEndHourMT;
+        // Fix: Ensure end hour never exceeds 23 (convert to proper 24-hour format)
+        const endHour = punchEndHourMT > 23 ? 23 : punchEndHourMT;
         
         // Handle shifts that cross midnight
         let hoursToProcess: number[] = [];
         if (endHour >= startHour) {
           // Normal shift within same day
           for (let h = startHour; h <= endHour; h++) {
-            hoursToProcess.push(h);
+            // Fix: Ensure we don't add hour 24 (which doesn't exist)
+            if (h <= 23) {
+              hoursToProcess.push(h);
+            } else if (h === 24) {
+              hoursToProcess.push(0); // Convert hour 24 to hour 0 (midnight)
+            }
           }
         } else {
           // Shift crosses midnight
@@ -949,23 +967,32 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
       const data = hourlyData[hour];
       const hourNum = parseInt(hour.split(':')[0]);
       
-      // **VALIDATION RULE 1: ABSOLUTE FUTURE FILTER** - Force zero for any future hours as final safety check
-      if (hourNum > currentMountainHour) {
-        if (data.laborCost > 0 || data.hoursWorked > 0 || data.employeesWorking > 0) {
-          console.warn(`🚨 FUTURE HOUR DETECTED: ${hour} has labor data but it's future time! Forcing to zero.`);
-          console.warn(`   Before: Cost=$${data.laborCost}, Hours=${data.hoursWorked}, Employees=${data.employeesWorking}`);
-          futureHoursFound++;
-          validationIssues++;
+        // **VALIDATION RULE 1: ABSOLUTE FUTURE FILTER** - Force zero for any future hours as final safety check
+        if (hourNum > currentMountainHour) {
+          if (data.laborCost > 0 || data.hoursWorked > 0 || data.employeesWorking > 0) {
+            console.warn(`🚨 FUTURE HOUR DETECTED: ${hour} has labor data but it's future time! Forcing to zero.`);
+            console.warn(`   Before: Cost=$${data.laborCost}, Hours=${data.hoursWorked}, Employees=${data.employeesWorking}`);
+            futureHoursFound++;
+            validationIssues++;
+          }
+          data.laborCost = 0;
+          data.hoursWorked = 0;
+          data.employeesWorking = 0;
+          console.log(`🔒 FUTURE HOUR ZEROED: ${hour} forced to $0.00 cost, 0 hours, 0 employees`);
+          correctionsMade++;
+          return; // Skip other validations for future hours
         }
-        data.laborCost = 0;
-        data.hoursWorked = 0;
-        data.employeesWorking = 0;
-        console.log(`🔒 FUTURE HOUR ZEROED: ${hour} forced to $0.00 cost, 0 hours, 0 employees`);
-        correctionsMade++;
-        return; // Skip other validations for future hours
-      }
-      
-      // **VALIDATION RULE 2: EXTREME OUTLIER DETECTION** - Flag but don't correct extreme outliers for investigation
+        
+        // **VALIDATION RULE 1.5: INVALID HOUR DETECTION** - Catch any invalid hour values
+        if (hourNum < 0 || hourNum > 23) {
+          console.warn(`🚨 INVALID HOUR DETECTED: ${hour} is not a valid 24-hour format! Skipping.`);
+          data.laborCost = 0;
+          data.hoursWorked = 0;
+          data.employeesWorking = 0;
+          validationIssues++;
+          correctionsMade++;
+          return;
+        }      // **VALIDATION RULE 2: EXTREME OUTLIER DETECTION** - Flag but don't correct extreme outliers for investigation
       if (data.hoursWorked > 50) {
         console.warn(`🚨 EXTREME OUTLIER: ${hour} has ${data.hoursWorked.toFixed(2)} hours worked - possible data aggregation issue`);
         validationIssues++;
