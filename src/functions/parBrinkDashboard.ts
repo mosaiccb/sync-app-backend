@@ -1,6 +1,39 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import axios from 'axios';
 
+/**
+ * DATA VALIDATION CONFIGURATION
+ * Configure validation tools and thresholds for dashboard data quality
+ */
+const DATA_VALIDATION_CONFIG = {
+  // Enable/disable validation features
+  enableFutureDataBlocking: true,
+  enableSalesValidation: true,
+  enableLaborValidation: true,
+  enableAlignmentValidation: true,
+  enableBusinessLogicValidation: true,
+  enableComprehensiveReporting: true,
+  
+  // Validation thresholds
+  maxReasonableOrderValue: 500,
+  minReasonableOrderValue: 5,
+  maxReasonableLaborPercentage: 40,
+  minReasonableLaborPercentage: 15,
+  maxReasonableWage: 40,
+  minReasonableWage: 2.13, // Federal tipped minimum
+  
+  // Quality score weights
+  futureDataPenalty: 10,
+  alignmentIssuePenalty: 5,
+  businessLogicPenalty: 3,
+  completenessIssuePenalty: 5,
+  
+  // Logging levels
+  enableDetailedLogging: true,
+  enableWarningAlerts: true,
+  enableInfoMessages: true
+};
+
 interface SalesOrder {
   Id: string;
   Name: string;
@@ -151,6 +184,9 @@ export async function parBrinkDashboard(request: HttpRequest, context: Invocatio
     // Process data into hourly format
     const hourlySales = processHourlySalesData(salesData);
     const hourlyLabor = processHourlyLaborData(laborData);
+
+    // **COMPREHENSIVE DATA VALIDATION REPORT**
+    validateDashboardData(hourlySales, hourlyLabor, locationInfo.timezone, context);
 
     // Debug: Log raw data to identify alignment issues
     console.log(`🔍 RAW DATA DEBUG: Sales orders count: ${salesData.length}`);
@@ -355,6 +391,14 @@ async function fetchParBrinkLaborData(accessToken: string, locationToken: string
 function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
   const hourlyData: { [hour: string]: HourlySalesData } = {};
 
+  // Get current Mountain Time hour for sales data validation
+  const now = new Date();
+  const currentMountainHour = parseInt(now.toLocaleString("en-US", { 
+    timeZone: "America/Denver",
+    hour: 'numeric',
+    hour12: false
+  }));
+
   // Initialize hourly buckets (3AM to 2AM next day)
   const hours = [];
   for (let i = 3; i <= 23; i++) {
@@ -374,7 +418,7 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     };
   });
 
-  // Process each order
+  // Process each order with validation
   orders.forEach(order => {
     if (!order.firstsendtime?.DateTime || order.firstsendtime.nil) return;
 
@@ -387,8 +431,28 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     }));
     const hour = `${mountainTimeHour.toString().padStart(2, '0')}:00`;
 
+    // **SALES DATA VALIDATION**: Check for future orders (should not exist in real-time dashboard)
+    if (DATA_VALIDATION_CONFIG.enableFutureDataBlocking && mountainTimeHour > currentMountainHour) {
+      console.warn(`🚨 FUTURE SALES ORDER: Order at ${hour} is in the future (current: ${currentMountainHour}:00) - excluding from totals`);
+      return; // Skip future orders
+    }
+
     if (hourlyData[hour]) {
-      hourlyData[hour].sales += order.Total || 0;
+      // **SALES DATA VALIDATION**: Validate order values
+      const orderTotal = order.Total || 0;
+      
+      if (DATA_VALIDATION_CONFIG.enableSalesValidation) {
+        if (orderTotal < 0) {
+          console.warn(`💸 NEGATIVE ORDER: Order ${order.Number} has negative total $${orderTotal} - excluding`);
+          return;
+        }
+        
+        if (orderTotal > DATA_VALIDATION_CONFIG.maxReasonableOrderValue) {
+          console.log(`💰 HIGH VALUE ORDER: Order ${order.Number} total $${orderTotal} (large order or catering)`);
+        }
+      }
+      
+      hourlyData[hour].sales += orderTotal;
       hourlyData[hour].orders += 1;
       
       // Count guests (assuming 1 guest per order for now - could be enhanced)
@@ -401,20 +465,286 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     }
   });
 
+  // **ENHANCED SALES DATA VALIDATION** - Apply comprehensive validation
+  if (DATA_VALIDATION_CONFIG.enableSalesValidation && DATA_VALIDATION_CONFIG.enableDetailedLogging) {
+    console.log(`📊 SALES VALIDATION: Starting validation for ${hours.length} sales hours`);
+  }
+  
+  let salesValidationIssues = 0;
+  let futureHoursBlocked = 0;
+  
+  hours.forEach(hour => {
+    const data = hourlyData[hour];
+    const hourNum = parseInt(hour.split(':')[0]);
+    
+    // Block future sales data as final safety check
+    if (hourNum > currentMountainHour) {
+      if (data.sales > 0 || data.orders > 0 || data.guests > 0) {
+        console.warn(`🚨 FUTURE SALES BLOCKED: ${hour} had sales data but it's future time - forcing to zero`);
+        futureHoursBlocked++;
+        salesValidationIssues++;
+      }
+      data.sales = 0;
+      data.orders = 0;
+      data.guests = 0;
+      data.guestAverage = 0;
+      return;
+    }
+    
+    // Validate sales data consistency
+    if (data.orders > 0 && data.sales === 0) {
+      console.warn(`🔍 SALES INCONSISTENCY: ${hour} has ${data.orders} orders but $0 sales`);
+      salesValidationIssues++;
+    }
+    
+    if (data.sales > 0 && data.orders === 0) {
+      console.warn(`🔍 SALES INCONSISTENCY: ${hour} has $${data.sales} sales but 0 orders`);
+      salesValidationIssues++;
+    }
+    
+    // Validate guest average calculations
+    if (data.guests > 0) {
+      const calculatedAverage = data.sales / data.guests;
+      if (Math.abs(calculatedAverage - data.guestAverage) > 0.01) {
+        console.warn(`🔢 CALCULATION ERROR: ${hour} guest average mismatch - recalculating`);
+        data.guestAverage = calculatedAverage;
+        salesValidationIssues++;
+      }
+    }
+    
+    // Validate realistic ranges
+    if (data.guestAverage > 100) {
+      console.warn(`💰 HIGH GUEST AVERAGE: ${hour} guest average $${data.guestAverage.toFixed(2)} (catering/large orders?)`);
+      salesValidationIssues++;
+    }
+    
+    if (data.guestAverage > 0 && data.guestAverage < 5) {
+      console.warn(`💸 LOW GUEST AVERAGE: ${hour} guest average $${data.guestAverage.toFixed(2)} (discounts/promos?)`);
+      salesValidationIssues++;
+    }
+  });
+  
+  console.log(`📋 SALES VALIDATION SUMMARY:`);
+  console.log(`  ✅ Sales hours validated: ${hours.length}`);
+  console.log(`  ⚠️  Sales issues found: ${salesValidationIssues}`);
+  console.log(`  🔒 Future sales hours blocked: ${futureHoursBlocked}`);
+  console.log(`  🕒 Current MT hour: ${currentMountainHour}:00`);
+
   return hours.map(hour => hourlyData[hour]);
+}
+
+/**
+ * Comprehensive Dashboard Data Validation Tool
+ * Provides detailed analysis and quality metrics for sales and labor data
+ */
+function validateDashboardData(
+  salesData: HourlySalesData[], 
+  laborData: HourlyLaborData[], 
+  timezone: string, 
+  context: InvocationContext
+): void {
+  if (!DATA_VALIDATION_CONFIG.enableComprehensiveReporting) {
+    return; // Skip validation if disabled
+  }
+  
+  context.log('🔍 COMPREHENSIVE DATA VALIDATION STARTING...');
+  
+  const now = new Date();
+  const currentHour = parseInt(now.toLocaleString("en-US", { 
+    timeZone: timezone,
+    hour: 'numeric',
+    hour12: false
+  }));
+  
+  // Overall validation metrics
+  let totalValidationIssues = 0;
+  let dataQualityScore = 100;
+  let recommendedActions: string[] = [];
+  
+  // Sales data analysis
+  const totalSales = salesData.reduce((sum, hour) => sum + hour.sales, 0);
+  const totalOrders = salesData.reduce((sum, hour) => sum + hour.orders, 0);
+  const activeSalesHours = salesData.filter(hour => hour.sales > 0).length;
+  const peakSalesHour = salesData.reduce((max, hour) => hour.sales > max.sales ? hour : max);
+  
+  // Labor data analysis
+  const totalLaborCost = laborData.reduce((sum, hour) => sum + hour.laborCost, 0);
+  const totalLaborHours = laborData.reduce((sum, hour) => sum + hour.hoursWorked, 0);
+  const activeLaborHours = laborData.filter(hour => hour.hoursWorked > 0).length;
+  const peakLaborHour = laborData.reduce((max, hour) => hour.laborCost > max.laborCost ? hour : max);
+  
+  context.log(`📊 Analysis: ${totalLaborHours.toFixed(1)} total labor hours processed`);
+  
+  // **VALIDATION 1: SALES-LABOR ALIGNMENT**
+  if (DATA_VALIDATION_CONFIG.enableAlignmentValidation) {
+    context.log('📊 Validating sales-labor alignment...');
+  }
+  let alignmentIssues = 0;
+  
+  salesData.forEach((salesHour, index) => {
+    const laborHour = laborData[index];
+    const hourNum = parseInt(salesHour.hour.split(':')[0]);
+    
+    // Skip future hours
+    if (hourNum > currentHour) return;
+    
+    // Check for sales without labor coverage
+    if (salesHour.sales > 100 && laborHour.hoursWorked === 0) {
+      context.warn(`⚠️ ALIGNMENT ISSUE: ${salesHour.hour} has $${salesHour.sales} sales but no labor hours`);
+      alignmentIssues++;
+      totalValidationIssues++;
+    }
+    
+    // Check for labor without sales (normal for prep/cleaning hours)
+    if (laborHour.hoursWorked > 2 && salesHour.sales === 0) {
+      context.log(`🔍 INFO: ${salesHour.hour} has ${laborHour.hoursWorked.toFixed(1)} labor hours but no sales (prep/cleaning?)`);
+    }
+  });
+  
+  // **VALIDATION 2: FUTURE DATA DETECTION**
+  context.log('🕐 Validating temporal data integrity...');
+  let futureDataIssues = 0;
+  
+  // Check sales data for future entries
+  salesData.forEach(hourData => {
+    const hourNum = parseInt(hourData.hour.split(':')[0]);
+    if (hourNum > currentHour && hourData.sales > 0) {
+      context.warn(`🚨 FUTURE SALES DATA: ${hourData.hour} contains $${hourData.sales} but is future time`);
+      futureDataIssues++;
+      totalValidationIssues++;
+    }
+  });
+  
+  // Check labor data for future entries
+  laborData.forEach(hourData => {
+    const hourNum = parseInt(hourData.hour.split(':')[0]);
+    if (hourNum > currentHour && hourData.laborCost > 0) {
+      context.warn(`🚨 FUTURE LABOR DATA: ${hourData.hour} contains $${hourData.laborCost} labor cost but is future time`);
+      futureDataIssues++;
+      totalValidationIssues++;
+    }
+  });
+  
+  // **VALIDATION 3: BUSINESS LOGIC VALIDATION**
+  context.log('🏪 Validating business logic rules...');
+  let businessLogicIssues = 0;
+  
+  // Labor percentage should be reasonable for restaurant industry
+  const laborPercentage = totalSales > 0 ? (totalLaborCost / totalSales) * 100 : 0;
+  if (laborPercentage > 40) {
+    context.warn(`💸 HIGH LABOR %: ${laborPercentage.toFixed(1)}% exceeds typical restaurant range (25-35%)`);
+    businessLogicIssues++;
+    recommendedActions.push('Review labor scheduling and efficiency');
+  } else if (laborPercentage < 15 && totalSales > 500) {
+    context.warn(`💸 LOW LABOR %: ${laborPercentage.toFixed(1)}% seems unusually low for restaurant operations`);
+    businessLogicIssues++;
+    recommendedActions.push('Verify labor data completeness');
+  }
+  
+  // Average order value validation
+  const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+  if (avgOrderValue > 50) {
+    context.log(`💰 HIGH AOV: Average order value $${avgOrderValue.toFixed(2)} (catering/large orders?)`);
+  } else if (avgOrderValue < 8 && totalOrders > 10) {
+    context.warn(`💸 LOW AOV: Average order value $${avgOrderValue.toFixed(2)} seems low for restaurant`);
+    businessLogicIssues++;
+    recommendedActions.push('Review pricing strategy or order composition');
+  }
+  
+  // **VALIDATION 4: DATA COMPLETENESS**
+  context.log('📋 Validating data completeness...');
+  let completenessIssues = 0;
+  
+  if (activeSalesHours < 8) {
+    context.warn(`📈 LIMITED SALES DATA: Only ${activeSalesHours} hours with sales activity`);
+    completenessIssues++;
+    dataQualityScore -= 10;
+  }
+  
+  if (activeLaborHours < 6) {
+    context.warn(`👥 LIMITED LABOR DATA: Only ${activeLaborHours} hours with labor activity`);
+    completenessIssues++;
+    dataQualityScore -= 15;
+  }
+  
+  // **VALIDATION 5: OPERATIONAL INSIGHTS**
+  context.log('🎯 Generating operational insights...');
+  
+  if (peakSalesHour.sales > 0) {
+    context.log(`📈 PEAK SALES: ${peakSalesHour.hour} with $${peakSalesHour.sales.toFixed(2)}`);
+  }
+  
+  if (peakLaborHour.laborCost > 0) {
+    context.log(`👥 PEAK LABOR: ${peakLaborHour.hour} with $${peakLaborHour.laborCost.toFixed(2)} cost`);
+  }
+  
+  // Calculate data quality score
+  dataQualityScore -= (alignmentIssues * 5);
+  dataQualityScore -= (futureDataIssues * 10);
+  dataQualityScore -= (businessLogicIssues * 3);
+  dataQualityScore -= (completenessIssues * 5);
+  dataQualityScore = Math.max(0, dataQualityScore);
+  
+  // **COMPREHENSIVE VALIDATION SUMMARY**
+  context.log('\n🎯 COMPREHENSIVE VALIDATION SUMMARY:');
+  context.log(`  📊 Data Quality Score: ${dataQualityScore}%`);
+  context.log(`  ⚠️  Total Issues Found: ${totalValidationIssues}`);
+  context.log(`  🏪 Sales Hours Active: ${activeSalesHours}`);
+  context.log(`  👥 Labor Hours Active: ${activeLaborHours}`);
+  context.log(`  💰 Total Sales: $${totalSales.toFixed(2)}`);
+  context.log(`  💸 Total Labor Cost: $${totalLaborCost.toFixed(2)}`);
+  context.log(`  📈 Labor Percentage: ${laborPercentage.toFixed(1)}%`);
+  context.log(`  🎯 Average Order Value: $${avgOrderValue.toFixed(2)}`);
+  context.log(`  🕐 Current Hour: ${currentHour}:00`);
+  
+  if (recommendedActions.length > 0) {
+    context.log('  💡 RECOMMENDED ACTIONS:');
+    recommendedActions.forEach(action => context.log(`    • ${action}`));
+  }
+  
+  if (dataQualityScore >= 90) {
+    context.log('  ✅ EXCELLENT: Data quality is excellent!');
+  } else if (dataQualityScore >= 75) {
+    context.log('  ✅ GOOD: Data quality is acceptable with minor issues');
+  } else if (dataQualityScore >= 50) {
+    context.log('  ⚠️  WARNING: Data quality has significant issues requiring attention');
+  } else {
+    context.log('  🚨 CRITICAL: Data quality is poor and requires immediate review');
+  }
+  
+  context.log('🔍 COMPREHENSIVE DATA VALIDATION COMPLETED\n');
 }
 
 function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
   const hourlyData: { [hour: string]: HourlyLaborData } = {};
 
-  // Get current Mountain Time hour to filter out future labor data
-  const currentMountainTime = new Date().toLocaleString("en-US", { 
+  // Get current Mountain Time hour to filter out future labor data - ENHANCED DEBUGGING
+  const now = new Date();
+  const currentMountainTime = now.toLocaleString("en-US", { 
     timeZone: "America/Denver",
     hour: 'numeric',
     hour12: false
   });
   const currentMountainHour = parseInt(currentMountainTime);
-  console.log(`🕒 CURRENT TIME FILTER: Current Mountain Time hour is ${currentMountainHour}:00 - filtering out future labor data`);
+  
+  // Additional debugging for timezone issues
+  const currentUTC = now.toISOString();
+  const currentMTFormatted = now.toLocaleString("en-US", { 
+    timeZone: "America/Denver",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  console.log(`🕒 ENHANCED TIME DEBUG:`);
+  console.log(`  Current UTC: ${currentUTC}`);
+  console.log(`  Current MT: ${currentMTFormatted}`);
+  console.log(`  Current MT Hour: ${currentMountainHour}:00`);
+  console.log(`  Filtering out ALL hours > ${currentMountainHour}`);
 
   // Initialize hourly buckets (24-hour format)
   const hours = [];
@@ -481,7 +811,17 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
         
         // Process each hour the shift spans with proper hour calculations
         // **CRITICAL FIX**: Filter out future hours BEFORE processing any labor data
-        const allowedHours = hoursToProcess.filter(hourNum => hourNum <= currentMountainHour);
+        console.log(`🔍 BEFORE FILTERING: Shift spans hours [${hoursToProcess.join(',')}], current hour is ${currentMountainHour}`);
+        
+        const allowedHours = hoursToProcess.filter(hourNum => {
+          const isAllowed = hourNum <= currentMountainHour;
+          if (!isAllowed) {
+            console.log(`❌ BLOCKING FUTURE HOUR: ${hourNum}:00 > ${currentMountainHour}:00 (current) - WILL NOT PROCESS`);
+          }
+          return isAllowed;
+        });
+        
+        console.log(`✅ AFTER FILTERING: Allowed hours [${allowedHours.join(',')}] out of original [${hoursToProcess.join(',')}]`);
         
         if (allowedHours.length === 0) {
           console.log(`⏭️ FUTURE FILTER: Entire shift ${punchStartHourMT}:00-${punchEndHourMT}:00 is in the future - skipping completely`);
@@ -512,9 +852,9 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
               if (punch.payRate && punch.payRate > 0) {
                 const laborCost = overlapHours * punch.payRate;
                 hourlyData[hourKey].laborCost += laborCost;
-                console.log(`Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+                console.log(`✅ ALLOWED HOUR - Hourly employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $${punch.payRate}/hour = $${laborCost.toFixed(2)}, punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
               } else {
-                console.log(`Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
+                console.log(`✅ ALLOWED HOUR - Salaried employee at ${hourKey}: ${overlapHours.toFixed(3)} overlap hours (of ${totalHoursInShift.toFixed(3)} total), $0 labor cost (excluded), punch MT: ${punchStartHourMT}:00-${punchEndHourMT}:00`);
               }
             }
           }
@@ -525,40 +865,135 @@ function processHourlyLaborData(punches: PunchDetail[]): HourlyLaborData[] {
       }
     });
 
-    // Apply validation rules and corrections
+    // **ENHANCED DATA VALIDATION TOOLS** - Apply comprehensive validation rules and corrections
+    console.log(`📊 DATA VALIDATION: Starting validation for ${hours.length} hours`);
+    
+    let validationIssues = 0;
+    let futureHoursFound = 0;
+    let correctionsMade = 0;
+    
     hours.forEach(hour => {
       const data = hourlyData[hour];
+      const hourNum = parseInt(hour.split(':')[0]);
       
-      // REMOVED PROBLEMATIC VALIDATION: Labor hours CAN exceed employee count in restaurants
-      // due to overlapping shifts, split shifts, multiple job codes, etc.
-      // The original validation was incorrectly capping real PAR Brink data.
+      // **VALIDATION RULE 1: ABSOLUTE FUTURE FILTER** - Force zero for any future hours as final safety check
+      if (hourNum > currentMountainHour) {
+        if (data.laborCost > 0 || data.hoursWorked > 0 || data.employeesWorking > 0) {
+          console.warn(`🚨 FUTURE HOUR DETECTED: ${hour} has labor data but it's future time! Forcing to zero.`);
+          console.warn(`   Before: Cost=$${data.laborCost}, Hours=${data.hoursWorked}, Employees=${data.employeesWorking}`);
+          futureHoursFound++;
+          validationIssues++;
+        }
+        data.laborCost = 0;
+        data.hoursWorked = 0;
+        data.employeesWorking = 0;
+        console.log(`🔒 FUTURE HOUR ZEROED: ${hour} forced to $0.00 cost, 0 hours, 0 employees`);
+        correctionsMade++;
+        return; // Skip other validations for future hours
+      }
       
-      // VALIDATION RULE 2: Only validate extremely unrealistic scenarios (removed)
-      // Restaurant operations can have overlapping shifts, so hours can exceed employee count
+      // **VALIDATION RULE 2: EXTREME OUTLIER DETECTION** - Flag but don't correct extreme outliers for investigation
+      if (data.hoursWorked > 50) {
+        console.warn(`🚨 EXTREME OUTLIER: ${hour} has ${data.hoursWorked.toFixed(2)} hours worked - possible data aggregation issue`);
+        validationIssues++;
+      }
       
-      // VALIDATION RULE 3: Wage validation (restaurant industry rates)
-      // Only validate wages for meaningful hour blocks (>= 0.25 hours to avoid false alarms from small overlaps)
+      if (data.employeesWorking > 20) {
+        console.warn(`🚨 EXTREME OUTLIER: ${hour} has ${data.employeesWorking} employees - unusually high for single hour`);
+        validationIssues++;
+      }
+      
+      // **VALIDATION RULE 3: WAGE VALIDATION** - Restaurant industry rates with enhanced ranges
       if (data.hoursWorked >= 0.25 && data.laborCost > 0) {
         const avgWage = data.laborCost / data.hoursWorked;
-        if (avgWage < 2.0) {
-          console.warn(`Labor validation WARNING for ${hour}: Average wage of $${avgWage.toFixed(2)}/hour is unusually low, even for tipped employees.`);
-        }
-        if (avgWage > 35.0) {
-          console.warn(`Labor validation WARNING for ${hour}: Average wage of $${avgWage.toFixed(2)}/hour seems unusually high (management rate?).`);
+        
+        // Expanded wage validation ranges for restaurant industry
+        if (avgWage < 2.13) {
+          console.warn(`💰 WAGE ALERT: ${hour} - Average wage $${avgWage.toFixed(2)}/hour below federal tipped minimum ($2.13)`);
+          validationIssues++;
+        } else if (avgWage < 7.25) {
+          console.log(`💰 WAGE INFO: ${hour} - Average wage $${avgWage.toFixed(2)}/hour indicates tipped employees`);
+        } else if (avgWage > 40.0) {
+          console.warn(`💰 WAGE ALERT: ${hour} - Average wage $${avgWage.toFixed(2)}/hour unusually high (executive/owner rate?)`);
+          validationIssues++;
+        } else if (avgWage > 25.0) {
+          console.log(`💰 WAGE INFO: ${hour} - Average wage $${avgWage.toFixed(2)}/hour indicates management/senior staff`);
         }
       }
       
-      // VALIDATION RULE 4: Labor cost consistency check
-      // If we have hours but no cost, or cost but no hours, flag it
-      if ((data.hoursWorked > 0 && data.laborCost === 0) || (data.laborCost > 0 && data.hoursWorked === 0)) {
-        console.warn(`Labor validation WARNING for ${hour}: Inconsistent hours (${data.hoursWorked}) and cost ($${data.laborCost}).`);
+      // **VALIDATION RULE 4: DATA CONSISTENCY CHECKS**
+      if ((data.hoursWorked > 0 && data.laborCost === 0)) {
+        console.warn(`🔍 CONSISTENCY ALERT: ${hour} - Has ${data.hoursWorked.toFixed(2)} hours but $0 cost (all salaried staff?)`);
+        validationIssues++;
       }
       
-      // VALIDATION RULE 5: No negative values
+      if ((data.laborCost > 0 && data.hoursWorked === 0)) {
+        console.warn(`🔍 CONSISTENCY ERROR: ${hour} - Has $${data.laborCost.toFixed(2)} cost but 0 hours (data error)`);
+        data.laborCost = 0; // Correct this error
+        correctionsMade++;
+        validationIssues++;
+      }
+      
+      if (data.employeesWorking > 0 && data.hoursWorked === 0) {
+        console.warn(`🔍 CONSISTENCY ERROR: ${hour} - Has ${data.employeesWorking} employees but 0 hours (data error)`);
+        data.employeesWorking = 0; // Correct this error
+        correctionsMade++;
+        validationIssues++;
+      }
+      
+      // **VALIDATION RULE 5: NEGATIVE VALUE PROTECTION**
+      const originalValues = { 
+        hours: data.hoursWorked, 
+        cost: data.laborCost, 
+        employees: data.employeesWorking 
+      };
+      
       data.hoursWorked = Math.max(0, data.hoursWorked);
       data.laborCost = Math.max(0, data.laborCost);
       data.employeesWorking = Math.max(0, data.employeesWorking);
+      
+      if (originalValues.hours < 0 || originalValues.cost < 0 || originalValues.employees < 0) {
+        console.warn(`🔧 NEGATIVE VALUE CORRECTION: ${hour} - Fixed negative values`);
+        correctionsMade++;
+        validationIssues++;
+      }
+      
+      // **VALIDATION RULE 6: BUSINESS LOGIC VALIDATION** - Restaurant-specific checks
+      if (data.laborCost > 1000) {
+        console.warn(`💸 HIGH COST ALERT: ${hour} - Labor cost $${data.laborCost.toFixed(2)} seems high for single hour`);
+        validationIssues++;
+      }
+      
+      // **VALIDATION RULE 7: DATA QUALITY SCORING**
+      let qualityScore = 100;
+      let avgWage = 0;
+      
+      if (data.hoursWorked > 0 && data.laborCost > 0) {
+        avgWage = data.laborCost / data.hoursWorked;
+      }
+      
+      if (data.hoursWorked > 0 && data.laborCost === 0) qualityScore -= 20; // Salaried staff normal
+      if (avgWage && (avgWage < 5 || avgWage > 30)) qualityScore -= 10; // Wage outliers
+      if (data.hoursWorked > data.employeesWorking * 8) qualityScore -= 15; // Hour distribution issues
+      
+      if (qualityScore < 80) {
+        console.log(`📊 DATA QUALITY: ${hour} - Quality score ${qualityScore}% (review recommended)`);
+      }
     });
+    
+    // **VALIDATION SUMMARY REPORT**
+    console.log(`\n📋 DATA VALIDATION SUMMARY:`);
+    console.log(`  ✅ Hours validated: ${hours.length}`);
+    console.log(`  ⚠️  Issues found: ${validationIssues}`);
+    console.log(`  🔒 Future hours blocked: ${futureHoursFound}`);
+    console.log(`  🔧 Corrections applied: ${correctionsMade}`);
+    console.log(`  🕒 Current MT hour: ${currentMountainHour}:00`);
+    
+    if (validationIssues === 0) {
+      console.log(`  🎉 All labor data passed validation!`);
+    } else if (correctionsMade > 0) {
+      console.log(`  ✨ Data quality improved through ${correctionsMade} corrections`);
+    }
   }
 
   return hours.map(hour => hourlyData[hour]);
