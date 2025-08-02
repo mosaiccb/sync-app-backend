@@ -547,12 +547,9 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     hour12: false
   }));
 
-  // Initialize hourly buckets (3AM to 2AM next day)
+  // Initialize hourly buckets (10AM to 10PM - store operating hours only)
   const hours = [];
-  for (let i = 3; i <= 23; i++) {
-    hours.push(`${i.toString().padStart(2, '0')}:00`);
-  }
-  for (let i = 0; i <= 2; i++) {
+  for (let i = 10; i <= 22; i++) {
     hours.push(`${i.toString().padStart(2, '0')}:00`);
   }
 
@@ -583,6 +580,12 @@ function processHourlySalesData(orders: SalesOrder[]): HourlySalesData[] {
     if (DATA_VALIDATION_CONFIG.enableFutureDataBlocking && mountainTimeHour > currentMountainHour) {
       console.warn(`🚨 FUTURE SALES ORDER: Order at ${hour} is in the future (current: ${currentMountainHour}:00) - excluding from totals`);
       return; // Skip future orders
+    }
+
+    // **STORE HOURS VALIDATION**: Only process orders during store operating hours (10AM-10PM)
+    if (mountainTimeHour < 10 || mountainTimeHour > 22) {
+      console.log(`🏪 OUTSIDE STORE HOURS: Order at ${hour} is outside operating hours (10AM-10PM) - excluding`);
+      return; // Skip orders outside store hours
     }
 
     if (hourlyData[hour]) {
@@ -982,9 +985,9 @@ function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees:
   console.log(`  Filtering out ALL hours > ${currentMountainHour}`);
   console.log(`🏢 EMPLOYEE CONSTRAINT: Max employees per hour capped at ${totalClockedInEmployees} (from clocked-in API)`);
 
-  // Initialize hourly buckets (24-hour format)
+  // Initialize hourly buckets (10AM to 10PM - store operating hours only)
   const hours = [];
-  for (let i = 0; i <= 23; i++) {
+  for (let i = 10; i <= 22; i++) {
     hours.push(`${i.toString().padStart(2, '0')}:00`);
   }
 
@@ -1058,9 +1061,11 @@ function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees:
         console.log(`🔍 BEFORE FILTERING: Shift spans hours [${hoursToProcess.join(',')}], current hour is ${currentMountainHour}`);
         
         const allowedHours = hoursToProcess.filter(hourNum => {
-          const isAllowed = hourNum <= currentMountainHour;
-          if (!isAllowed) {
+          const isAllowed = hourNum <= currentMountainHour && hourNum >= 10 && hourNum <= 22;
+          if (hourNum > currentMountainHour) {
             console.log(`❌ BLOCKING FUTURE HOUR: ${hourNum}:00 > ${currentMountainHour}:00 (current) - WILL NOT PROCESS`);
+          } else if (hourNum < 10 || hourNum > 22) {
+            console.log(`🏪 BLOCKING OUTSIDE STORE HOURS: ${hourNum}:00 is outside operating hours (10AM-10PM) - WILL NOT PROCESS`);
           }
           return isAllowed;
         });
@@ -1068,11 +1073,11 @@ function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees:
         console.log(`✅ AFTER FILTERING: Allowed hours [${allowedHours.join(',')}] out of original [${hoursToProcess.join(',')}]`);
         
         if (allowedHours.length === 0) {
-          console.log(`⏭️ FUTURE FILTER: Entire shift ${punchStartHourMT}:00-${punchEndHourMT}:00 is in the future - skipping completely`);
-          return; // Skip this entire shift if all hours are in the future
+          console.log(`⏭️ SHIFT FILTER: Entire shift ${punchStartHourMT}:00-${punchEndHourMT}:00 is filtered out (future or outside store hours) - skipping completely`);
+          return; // Skip this entire shift if all hours are filtered out
         }
         
-        console.log(`📊 SHIFT PROCESSING: Processing shift ${punchStartHourMT}:00-${punchEndHourMT}:00, allowed hours: ${allowedHours.join(',')}, filtered out future hours`);
+        console.log(`📊 SHIFT PROCESSING: Processing shift ${punchStartHourMT}:00-${punchEndHourMT}:00, allowed hours: ${allowedHours.join(',')}, filtered out future/non-operating hours`);
         
         allowedHours.forEach(hourNum => {
           const hourKey = `${hourNum.toString().padStart(2, '0')}:00`;
@@ -1136,6 +1141,21 @@ function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees:
           return; // Skip other validations for future hours
         }
         
+        // **VALIDATION RULE 1.2: STORE HOURS FILTER** - Ensure no data outside operating hours
+        if (hourNum < 10 || hourNum > 22) {
+          if (data.laborCost > 0 || data.hoursWorked > 0 || data.employeesWorking > 0) {
+            console.warn(`🏪 OUTSIDE STORE HOURS: ${hour} has labor data outside operating hours (10AM-10PM)! Forcing to zero.`);
+            console.warn(`   Before: Cost=$${data.laborCost}, Hours=${data.hoursWorked}, Employees=${data.employeesWorking}`);
+            validationIssues++;
+          }
+          data.laborCost = 0;
+          data.hoursWorked = 0;
+          data.employeesWorking = 0;
+          console.log(`🏪 NON-OPERATING HOUR ZEROED: ${hour} forced to $0.00 cost, 0 hours, 0 employees`);
+          correctionsMade++;
+          return; // Skip other validations for non-operating hours
+        }
+        
         // **VALIDATION RULE 1.5: INVALID HOUR DETECTION** - Catch any invalid hour values
         if (hourNum < 0 || hourNum > 23) {
           console.warn(`🚨 INVALID HOUR DETECTED: ${hour} is not a valid 24-hour format! Skipping.`);
@@ -1145,7 +1165,9 @@ function processHourlyLaborData(punches: PunchDetail[], totalClockedInEmployees:
           validationIssues++;
           correctionsMade++;
           return;
-        }      // **VALIDATION RULE 2: EXTREME OUTLIER DETECTION** - Flag but don't correct extreme outliers for investigation
+        }
+        
+        // **VALIDATION RULE 2: EXTREME OUTLIER DETECTION** - Flag but don't correct extreme outliers for investigation
       if (data.hoursWorked > 50) {
         console.warn(`🚨 EXTREME OUTLIER: ${hour} has ${data.hoursWorked.toFixed(2)} hours worked - possible data aggregation issue`);
         validationIssues++;
