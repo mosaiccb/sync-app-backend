@@ -498,16 +498,28 @@ function parseCurrentlyWorkingEmployeesFromShifts(xmlData: string): number {
         const employeeId = shiftXml.match(/<EmployeeId>([^<]+)<\/EmployeeId>/)?.[1];
         const startTime = shiftXml.match(/<StartTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/)?.[1];
         
-        // Check if shift has an end time - if not, employee is still working
+        // Check if shift has an end time - look for actual valid end times
         const endTimeMatch = shiftXml.match(/<EndTime[\s\S]*?<a:DateTime>([^<]+)<\/a:DateTime>/);
-        const hasEndTime = endTimeMatch && endTimeMatch[1] && endTimeMatch[1].trim() !== '';
+        let hasValidEndTime = false;
         
-        if (employeeId && startTime && !hasEndTime) {
-          // Employee has a shift that started but hasn't ended - they're currently working
-          workingCount++;
-          console.log(`🏢 CLOCKED-IN: Employee ${employeeId} is currently working (shift started: ${startTime}, no end time)`);
-        } else if (employeeId && startTime && hasEndTime) {
-          console.log(`✅ CLOCKED-OUT: Employee ${employeeId} completed shift (${startTime} to ${endTimeMatch[1]})`);
+        if (endTimeMatch && endTimeMatch[1]) {
+          const endTimeStr = endTimeMatch[1].trim();
+          // Check if it's a real end time (not the default null date indicator)
+          if (endTimeStr !== '' && 
+              !endTimeStr.startsWith('0001-01-01') && 
+              !endTimeStr.includes('1/1/0001')) {
+            hasValidEndTime = true;
+          }
+        }
+        
+        if (employeeId && startTime) {
+          if (!hasValidEndTime) {
+            // Employee has a shift that started but hasn't ended - they're currently working
+            workingCount++;
+            console.log(`🏢 CLOCKED-IN: Employee ${employeeId} is currently working (shift started: ${startTime}, no valid end time)`);
+          } else if (endTimeMatch && endTimeMatch[1]) {
+            console.log(`✅ CLOCKED-OUT: Employee ${employeeId} completed shift (${startTime} to ${endTimeMatch[1]})`);
+          }
         }
       } catch (error) {
         // Skip invalid shift records
