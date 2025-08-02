@@ -25,7 +25,6 @@
     "mssql": "^11.0.1",
     "node-cache": "^5.1.2",
     "soap": "^1.2.1",
-    "typescript": "^5.0.0",
     "uuid": "^9.0.0",
     "zod": "^3.22.0"
   },
@@ -39,7 +38,8 @@
     "azure-functions-core-tools": "^4.0.0",
     "eslint": "^8.0.0",
     "jest": "^29.0.0",
-    "ts-jest": "^29.0.0"
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
